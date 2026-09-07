@@ -6,6 +6,7 @@ import {
   Check,
   CircleAlert,
   Database,
+  Download,
   FileSpreadsheet,
   Moon,
   Sun,
@@ -13,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import type { Analysis } from "./types";
+import { downloadExecutiveReport } from "./report";
 const Charts = lazy(() => import("./Charts"));
 const MAX_UPLOAD_MB = import.meta.env.PROD ? 4 : 10;
 const tabs = ["Overview", "Data quality", "Explore", "Data preview"] as const;
@@ -129,7 +131,7 @@ export default function App() {
         <a className="brand" href="#">
           <Aperture size={30} />
           <span>
-            DataLens<span className="version"> / 0.3</span>
+            DataLens<span className="version"> / 0.4</span>
           </span>
         </a>
         <a
@@ -154,7 +156,7 @@ export default function App() {
         <div className="side-bottom">
           A clearer view of your data.
           <br />
-          <span>Executive preview · v0.3</span>
+          <span>Executive preview · v0.4</span>
         </div>
       </aside>
       <main>
@@ -263,9 +265,17 @@ export default function App() {
                     {fmt(data.rows)} rows · {data.column_count} columns
                   </p>
                 </div>
-                <span className="analyzed">
-                  <Check size={14} /> Analysis complete
-                </span>
+                <div className="file-actions">
+                  <button
+                    className="report-button"
+                    onClick={() => downloadExecutiveReport(data)}
+                  >
+                    <Download size={15} /> Export executive brief
+                  </button>
+                  <span className="analyzed">
+                    <Check size={14} /> Analysis complete
+                  </span>
+                </div>
               </div>
               <nav className="tabs" aria-label="Dataset views">
                 {tabs.map((t) => (

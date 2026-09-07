@@ -8,7 +8,7 @@ DataLens is a standalone workspace linked from Nexus. It does not share authenti
 
 A focused CSV profiling workspace for a software/data portfolio. React + TypeScript + Tailwind + Recharts on the frontend; FastAPI + Pandas + NumPy on the backend. No AI API, database, or account required.
 
-## v0.3 features
+## v0.4 features
 
 - Upload or drop a UTF-8 CSV; bundled retail demo (164 rows).
 - Schema inference: numeric, categorical, ISO date, boolean, email, identifier, empty.
@@ -19,6 +19,7 @@ A focused CSV profiling workspace for a software/data portfolio. React + TypeScr
 - Four transparent quality dimensions and an overall score.
 - Automatic header-row detection that preserves every record in headerless CSV files.
 - Executive brief with readiness status, prioritized risks, business impact, and recommended actions.
+- Downloadable, print-ready executive brief with scoring limits and decision notes.
 - Explicit header override when automatic detection needs human correction.
 - Light/dark themes, responsive layout, accessible labels, loading and error states.
 
@@ -60,6 +61,7 @@ Open http://127.0.0.1:5173 and choose **Explore sample dataset**, or upload `sam
 frontend/
   src/App.tsx       Upload state, views, quality cards, preview
   src/Charts.tsx    Lazy-loaded Recharts visualization module
+  src/report.ts     Private, browser-generated executive report
   src/types.ts      API response interfaces
   src/style.css     Tailwind import, theme tokens, responsive UI
   public/demo.csv   Browser-accessible demo
@@ -77,13 +79,13 @@ Flow: browser → multipart `POST /api/analyze?header_mode=auto` with an optiona
 
 Let R = rows, C = columns, M = empty cells after trimming, P = R×C−M, T = type mismatches, D = duplicate rows beyond the first occurrence, V = invalid typed values, K = checked typed values.
 
-| Dimension | Score |
-|---|---|
-| Completeness | `100 × (1 − M / (R × C))` |
-| Consistency | `100 × (1 − T / P)`; N/A if P=0 |
-| Uniqueness | `100 × (1 − D / R)` |
-| Validity | `100 × (1 − V / K)`; N/A if K=0 |
-| Overall | Arithmetic mean of available dimensions, calculated before rounding |
+| Dimension    | Score                                                               |
+| ------------ | ------------------------------------------------------------------- |
+| Completeness | `100 × (1 − M / (R × C))`                                           |
+| Consistency  | `100 × (1 − T / P)`; N/A if P=0                                     |
+| Uniqueness   | `100 × (1 − D / R)`                                                 |
+| Validity     | `100 × (1 − V / K)`; N/A if K=0                                     |
+| Overall      | Arithmetic mean of available dimensions, calculated before rounding |
 
 Scores are rounded to two decimals. Duplicate comparison uses trimmed strings and normalized blanks across all columns; numeric spellings such as `1` and `1.0` remain different. Only empty/whitespace cells are missing: literal `NA`, `null`, and `nan` are not silently discarded.
 
@@ -131,19 +133,19 @@ On macOS/Linux replace `.venv/Scripts/python` with `.venv/bin/python`. Tests cov
 
 Place actual captures in these locations before publishing your portfolio:
 
-| Capture | Placeholder |
-|---|---|
-| Light overview with demo dataset | `docs/overview-light.png` |
-| Dark overview | `docs/overview-dark.png` |
-| Column health and numeric exploration | `docs/explore.png` |
+| Capture                               | Placeholder               |
+| ------------------------------------- | ------------------------- |
+| Light overview with demo dataset      | `docs/overview-light.png` |
+| Dark overview                         | `docs/overview-dark.png`  |
+| Column health and numeric exploration | `docs/explore.png`        |
 
 See [capture checklist](docs/screenshots.md). These are explicitly placeholders, not screenshots of a verified browser session.
 
 ## Roadmap
 
-- v0.4: custom missing markers, delimiter/encoding selection, XLSX, and configurable chart axes.
-- v0.5: date-series analysis, explicit business validity rules, and downloadable executive reports.
-- v0.6: saved quality policies, browser regression coverage, and dataset audit history.
+- v0.5: custom missing markers, delimiter/encoding selection, XLSX, and configurable chart axes.
+- v0.6: date-series analysis and explicit business validity rules.
+- v0.7: saved quality policies, browser regression coverage, and dataset audit history.
 
 ## References
 

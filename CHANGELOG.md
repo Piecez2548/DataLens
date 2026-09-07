@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.0 — Portable executive brief
+
+- Export a self-contained HTML executive brief directly in the browser.
+- Include the readiness decision, quality scorecard, priority findings, analytical signals, outlier evidence, and method limits.
+- Add print styling so the exported brief can be saved as PDF without another service receiving the dataset.
+
 ## 0.3.0 — Governed schema and deeper evidence
 
 - Let users name columns and override inferred types, then reanalyze the unchanged source file.

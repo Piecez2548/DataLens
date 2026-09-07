@@ -522,8 +522,17 @@ p {
   background: #31988112;
   border-radius: 8px;
 }
-.analyzed {
+.file-actions {
   margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.report-button {
+  padding: 8px 11px;
+  font-size: 12px;
+}
+.analyzed {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -836,6 +845,15 @@ footer span:first-child {
   }
   .stats-strip {
     grid-template-columns: repeat(3, 1fr);
+  }
+  .file-strip {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .file-actions {
+    width: 100%;
+    margin-left: 0;
+    justify-content: space-between;
   }
 }
 @media (max-width: 480px) {

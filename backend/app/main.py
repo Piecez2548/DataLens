@@ -9,7 +9,7 @@ from .analysis import MAX_BYTES, analyze
 
 UPLOAD_LIMIT = 4 * 1024 * 1024 if os.environ.get("VERCEL") else MAX_BYTES
 
-app = FastAPI(title="DataLens API", version="0.3.0")
+app = FastAPI(title="DataLens API", version="0.4.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
