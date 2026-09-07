@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.1 — Embedded-field detection
+
+- Flag repeated pipe delimiters that suggest multiple business fields were exported into one CSV column.
+- Keep the numeric quality score separate while changing executive readiness to `Review needed`.
+- Verify production calculations independently against `Products.csv` and the Looker Studio milk dataset.
+
 ## 0.5.0 — Verifiable source provenance
 
 - Remove the fictional dataset from the production user flow; retain one clearly marked repository fixture for developer tests only.

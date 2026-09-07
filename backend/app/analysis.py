@@ -68,6 +68,7 @@ def _executive_summary(
     header_detected: bool,
     outliers: int,
     correlations: list[dict],
+    embedded_delimiters: list[str],
 ) -> dict:
     issues = []
     if not header_detected:
@@ -123,6 +124,16 @@ def _executive_summary(
                 "title": f"{outliers:,} statistical outliers deserve context",
                 "detail": "IQR flags unusual numeric values; unusual does not automatically mean incorrect.",
                 "recommendation": "Ask the data owner whether these represent valid edge cases, errors, or exceptional events.",
+            }
+        )
+    if embedded_delimiters:
+        names = ", ".join(embedded_delimiters[:3])
+        issues.append(
+            {
+                "severity": "medium",
+                "title": "Possible fields embedded inside one CSV column",
+                "detail": f"Repeated pipe delimiters were found in: {names}.",
+                "recommendation": "Confirm whether each pipe-separated field needs its own CSV column before reporting.",
             }
         )
     high = sum(item["severity"] == "high" for item in issues)
@@ -327,6 +338,12 @@ def analyze(
                     correlations.append({"left": left, "right": right, "coefficient": round(float(coefficient), 4)})
         correlations.sort(key=lambda item: abs(item["coefficient"]), reverse=True)
     outliers = sum(column["outliers"] for column in columns)
+    embedded_delimiters = []
+    for header in headers:
+        values = normalized[header].dropna().astype(str)
+        pipe_ratio = float(values.str.count(r"\|").ge(2).mean()) if len(values) else 0
+        if header.count("|") >= 2 or pipe_ratio >= 0.8:
+            embedded_delimiters.append(header)
     executive = _executive_summary(
         scores=scores,
         missing=missing,
@@ -337,6 +354,7 @@ def analyze(
         header_detected=use_header or column_names is not None,
         outliers=outliers,
         correlations=correlations,
+        embedded_delimiters=embedded_delimiters,
     )
     numeric_names = list(numeric)
     scatter = []
@@ -373,7 +391,7 @@ def analyze(
             "file_rows": len(all_rows),
             "analyzed_rows": n,
             "preview_rows": min(n, 100),
-            "method_version": "0.5.0",
+            "method_version": "0.5.1",
             "calculation_mode": "deterministic",
             "data_values_generated": False,
         },

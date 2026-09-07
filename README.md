@@ -8,7 +8,7 @@ DataLens is a standalone workspace linked from Nexus. It does not share authenti
 
 A focused CSV profiling workspace for a software/data portfolio. React + TypeScript + Tailwind + Recharts on the frontend; FastAPI + Pandas + NumPy on the backend. No AI API, database, or account required.
 
-## v0.5 features
+## v0.5.1 features
 
 - Upload or drop a UTF-8 CSV; production does not preload or offer fictional business data.
 - Schema inference: numeric, categorical, ISO date, boolean, email, identifier, empty.
@@ -21,6 +21,7 @@ A focused CSV profiling workspace for a software/data portfolio. React + TypeScr
 - Executive brief with readiness status, prioritized risks, business impact, and recommended actions.
 - Downloadable, print-ready executive brief with scoring limits and decision notes.
 - Evidence provenance with SHA-256 input fingerprint, analyzed row counts, deterministic method version, and a no-generated-values declaration.
+- Structural warning when repeated pipe delimiters suggest multiple business fields were embedded in one CSV column.
 - Explicit header override when automatic detection needs human correction.
 - Light/dark themes, responsive layout, accessible labels, loading and error states.
 

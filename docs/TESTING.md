@@ -15,6 +15,7 @@ Automated checks run on every push and pull request through GitHub Actions.
 - Use **Use first row as header** and confirm the dataset is reanalyzed with one fewer data row.
 - Open Data quality: `date` has one invalid date; `units` has one type mismatch.
 - Upload an email column containing an invalid address and confirm Validity falls below 100.
+- Upload a CSV whose column name and values contain repeated `|` table delimiters; confirm the score can remain 100 while executive status changes to `Review needed`.
 - Upload numeric columns with an extreme value and a related pair; confirm the IQR outlier count and correlation signal appear.
 - Explore `units` and `region`: verify histogram and category bars; verify donut and scatter.
 - Preview: navigate forward/back; blank revenue displays an em dash.

@@ -118,7 +118,7 @@ export default function App() {
         <a className="brand" href="#">
           <Aperture size={30} />
           <span>
-            DataLens<span className="version"> / 0.5</span>
+            DataLens<span className="version"> / 0.5.1</span>
           </span>
         </a>
         <a
@@ -143,7 +143,7 @@ export default function App() {
         <div className="side-bottom">
           A clearer view of your data.
           <br />
-          <span>Executive preview · v0.5</span>
+          <span>Executive preview · v0.5.1</span>
         </div>
       </aside>
       <main>

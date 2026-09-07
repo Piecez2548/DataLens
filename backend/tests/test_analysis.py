@@ -144,7 +144,17 @@ def test_provenance_fingerprints_the_exact_input_without_generating_values():
         "file_rows": 3,
         "analyzed_rows": 2,
         "preview_rows": 2,
-        "method_version": "0.5.0",
+        "method_version": "0.5.1",
         "calculation_mode": "deterministic",
         "data_values_generated": False,
     }
+
+
+def test_embedded_table_delimiters_require_structural_review():
+    result = analyze(
+        b'ID,| Category | Product |\n1,"| Drinks | Water |"\n2,"| Food | Rice |"\n',
+        "products.csv",
+    )
+    assert result["scores"]["Overall"] == 100
+    assert result["executive"]["status"] == "Review needed"
+    assert any("embedded" in issue["title"].lower() for issue in result["executive"]["issues"])
