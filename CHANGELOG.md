@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.2 — Exact Tukey fences
+
+- Apply the 1.5×IQR rule when IQR is zero instead of skipping minority values outside the collapsed fence.
+- Add a regression case for a mostly constant numeric column.
+
 ## 0.5.1 — Embedded-field detection
 
 - Flag repeated pipe delimiters that suggest multiple business fields were exported into one CSV column.

@@ -144,7 +144,7 @@ def test_provenance_fingerprints_the_exact_input_without_generating_values():
         "file_rows": 3,
         "analyzed_rows": 2,
         "preview_rows": 2,
-        "method_version": "0.5.1",
+        "method_version": "0.5.2",
         "calculation_mode": "deterministic",
         "data_values_generated": False,
     }
@@ -158,3 +158,10 @@ def test_embedded_table_delimiters_require_structural_review():
     assert result["scores"]["Overall"] == 100
     assert result["executive"]["status"] == "Review needed"
     assert any("embedded" in issue["title"].lower() for issue in result["executive"]["issues"])
+
+
+def test_iqr_flags_minority_values_when_middle_half_is_constant():
+    result = analyze(b"volume\n180\n180\n180\n180\n200\n", "volume.csv")
+    assert result["columns"][0]["stats"]["q1"] == 180
+    assert result["columns"][0]["stats"]["q3"] == 180
+    assert result["columns"][0]["outliers"] == 1

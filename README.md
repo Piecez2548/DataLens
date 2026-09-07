@@ -8,7 +8,7 @@ DataLens is a standalone workspace linked from Nexus. It does not share authenti
 
 A focused CSV profiling workspace for a software/data portfolio. React + TypeScript + Tailwind + Recharts on the frontend; FastAPI + Pandas + NumPy on the backend. No AI API, database, or account required.
 
-## v0.5.1 features
+## v0.5.2 features
 
 - Upload or drop a UTF-8 CSV; production does not preload or offer fictional business data.
 - Schema inference: numeric, categorical, ISO date, boolean, email, identifier, empty.

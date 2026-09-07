@@ -313,7 +313,7 @@ def analyze(
         if dtype == "numeric" and stats:
             q1, q3 = good.quantile([0.25, 0.75])
             iqr = q3 - q1
-            outlier_count = int(((good < q1 - 1.5 * iqr) | (good > q3 + 1.5 * iqr)).sum()) if iqr else 0
+            outlier_count = int(((good < q1 - 1.5 * iqr) | (good > q3 + 1.5 * iqr)).sum())
             columns[-1]["outliers"] = outlier_count
             stats.update({"q1": float(q1), "q3": float(q3)})
     missing = int(normalized.isna().sum().sum())
@@ -391,7 +391,7 @@ def analyze(
             "file_rows": len(all_rows),
             "analyzed_rows": n,
             "preview_rows": min(n, 100),
-            "method_version": "0.5.1",
+            "method_version": "0.5.2",
             "calculation_mode": "deterministic",
             "data_values_generated": False,
         },

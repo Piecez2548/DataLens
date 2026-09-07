@@ -17,6 +17,7 @@ Automated checks run on every push and pull request through GitHub Actions.
 - Upload an email column containing an invalid address and confirm Validity falls below 100.
 - Upload a CSV whose column name and values contain repeated `|` table delimiters; confirm the score can remain 100 while executive status changes to `Review needed`.
 - Upload numeric columns with an extreme value and a related pair; confirm the IQR outlier count and correlation signal appear.
+- Upload a mostly constant numeric column whose Q1 and Q3 are equal; confirm minority values outside that collapsed Tukey fence are still flagged.
 - Explore `units` and `region`: verify histogram and category bars; verify donut and scatter.
 - Preview: navigate forward/back; blank revenue displays an em dash.
 - Upload a UTF-8 CSV containing quoted commas and blank cells.
