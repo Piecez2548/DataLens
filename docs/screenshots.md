@@ -5,4 +5,4 @@
 3. Toggle the theme and capture `overview-dark.png`.
 4. Open Explore and capture `explore.png`.
 
-Use your own synthetic/demo dataset. Do not publish private uploaded data in screenshots.
+Use a verified, non-sensitive public dataset and record its source beside the screenshots. Do not publish private uploaded data or present synthetic values as business evidence.

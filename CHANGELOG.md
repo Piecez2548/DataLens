@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.0 — Verifiable source provenance
+
+- Remove the fictional dataset from the production user flow; retain one clearly marked repository fixture for developer tests only.
+- Identify uploaded files separately and state that displayed values and metrics derive from that file.
+- Add an SHA-256 input fingerprint, byte and row counts, deterministic method version, and a no-generated-values declaration to every analysis response.
+- Carry the provenance record into the downloadable executive report.
+- Replace relationship wording with the precise observed Pearson coefficient description.
+
 ## 0.4.0 — Portable executive brief
 
 - Export a self-contained HTML executive brief directly in the browser.

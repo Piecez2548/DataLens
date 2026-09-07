@@ -1,6 +1,7 @@
 """Deterministic CSV profiling. All scores describe inferred rules, not truth."""
 
 import csv
+import hashlib
 import io
 import re
 from collections import Counter
@@ -139,7 +140,7 @@ def _executive_summary(
         "high_priority_count": high,
         "issues": issues[:6],
         "signals": [
-            f"Strongest numeric relationship: {pair['left']} ↔ {pair['right']} ({pair['coefficient']:+.2f})."
+            f"Observed Pearson coefficient in this file: {pair['left']} ↔ {pair['right']} ({pair['coefficient']:+.2f})."
             for pair in correlations[:1]
         ],
         "scope_note": "Automated structural checks only; business accuracy still requires an accountable owner.",
@@ -365,4 +366,15 @@ def analyze(
         "scatter": scatter,
         "scatter_axes": scatter_axes,
         "correlations": correlations[:10],
+        "provenance": {
+            "source": "uploaded_file",
+            "sha256": hashlib.sha256(content).hexdigest(),
+            "input_bytes": len(content),
+            "file_rows": len(all_rows),
+            "analyzed_rows": n,
+            "preview_rows": min(n, 100),
+            "method_version": "0.5.0",
+            "calculation_mode": "deterministic",
+            "data_values_generated": False,
+        },
     }

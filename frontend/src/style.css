@@ -472,18 +472,6 @@ p {
   color: var(--muted);
   font-size: 12px;
 }
-.demo-row {
-  margin: 40px -20px 0;
-  padding: 22px;
-  border-top: 1px solid var(--border);
-  font-size: 14px;
-  color: var(--muted);
-}
-.demo-row button {
-  border: 0;
-  background: transparent;
-  color: var(--accent);
-}
 .error {
   padding: 14px 16px;
   background: #fce8e8;
@@ -507,6 +495,26 @@ p {
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--panel);
+}
+.provenance-strip {
+  display: grid;
+  grid-template-columns: auto minmax(220px, 1fr) auto;
+  align-items: center;
+  gap: 10px 16px;
+  padding: 11px 15px;
+  border: 1px solid #31988155;
+  border-top: 0;
+  border-radius: 0 0 9px 9px;
+  background: #3198810a;
+  color: #267763;
+  font-size: 11px;
+}
+.provenance-strip span {
+  color: var(--text);
+}
+.provenance-strip small {
+  color: var(--muted);
+  text-align: right;
 }
 .file-strip strong {
   font-size: 14px;
@@ -855,6 +863,12 @@ footer span:first-child {
     margin-left: 0;
     justify-content: space-between;
   }
+  .provenance-strip {
+    grid-template-columns: 1fr;
+  }
+  .provenance-strip small {
+    text-align: left;
+  }
 }
 @media (max-width: 480px) {
   .page-heading {
@@ -884,8 +898,5 @@ footer span:first-child {
   footer span:last-child {
     max-width: 180px;
     text-align: right;
-  }
-  .demo-row span {
-    display: block;
   }
 }

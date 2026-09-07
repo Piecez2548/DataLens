@@ -46,4 +46,15 @@ export interface Analysis {
   scatter: { x: number; y: number }[];
   scatter_axes: string[];
   correlations: { left: string; right: string; coefficient: number }[];
+  provenance: {
+    source: "uploaded_file";
+    sha256: string;
+    input_bytes: number;
+    file_rows: number;
+    analyzed_rows: number;
+    preview_rows: number;
+    method_version: string;
+    calculation_mode: "deterministic";
+    data_values_generated: false;
+  };
 }

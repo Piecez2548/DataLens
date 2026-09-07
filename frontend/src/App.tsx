@@ -111,19 +111,6 @@ export default function App() {
       if (input.current) input.current.value = "";
     }
   }
-  async function demo() {
-    try {
-      const r = await fetch("/demo.csv");
-      if (!r.ok) throw new Error();
-      await upload(
-        new File([await r.blob()], "retail-demo.csv", { type: "text/csv" }),
-      );
-    } catch {
-      setError(
-        "Could not load the sample CSV. Please upload samples/demo.csv.",
-      );
-    }
-  }
   const column = data?.columns.find((c) => c.name === selected);
   return (
     <div className={dark ? "app dark" : "app"}>
@@ -131,7 +118,7 @@ export default function App() {
         <a className="brand" href="#">
           <Aperture size={30} />
           <span>
-            DataLens<span className="version"> / 0.4</span>
+            DataLens<span className="version"> / 0.5</span>
           </span>
         </a>
         <a
@@ -156,7 +143,7 @@ export default function App() {
         <div className="side-bottom">
           A clearer view of your data.
           <br />
-          <span>Executive preview · v0.4</span>
+          <span>Executive preview · v0.5</span>
         </div>
       </aside>
       <main>
@@ -246,12 +233,6 @@ export default function App() {
                 UTF-8 CSV · up to {MAX_UPLOAD_MB} MB · 100,000 rows · 100
                 columns
               </small>
-              <div className="demo-row">
-                <span>Just looking around?</span>
-                <button disabled={busy} onClick={() => void demo()}>
-                  Explore sample dataset →
-                </button>
-              </div>
             </section>
           ) : (
             <>
@@ -276,6 +257,18 @@ export default function App() {
                     <Check size={14} /> Analysis complete
                   </span>
                 </div>
+              </div>
+              <div className="provenance-strip" role="status">
+                <strong>Uploaded source file</strong>
+                <span>
+                  All displayed values and metrics derive from this file; no
+                  data rows or values were invented.
+                </span>
+                <small>
+                  SHA-256 {data.provenance.sha256.slice(0, 12)}… · Method v
+                  {data.provenance.method_version} ·{" "}
+                  {fmt(data.provenance.input_bytes)} bytes
+                </small>
               </div>
               <nav className="tabs" aria-label="Dataset views">
                 {tabs.map((t) => (

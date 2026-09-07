@@ -8,9 +8,9 @@ DataLens is a standalone workspace linked from Nexus. It does not share authenti
 
 A focused CSV profiling workspace for a software/data portfolio. React + TypeScript + Tailwind + Recharts on the frontend; FastAPI + Pandas + NumPy on the backend. No AI API, database, or account required.
 
-## v0.4 features
+## v0.5 features
 
-- Upload or drop a UTF-8 CSV; bundled retail demo (164 rows).
+- Upload or drop a UTF-8 CSV; production does not preload or offer fictional business data.
 - Schema inference: numeric, categorical, ISO date, boolean, email, identifier, empty.
 - Editable column names and governed type overrides without discarding source rows.
 - Table preview with pagination, missing cells, duplicates, column health.
@@ -20,6 +20,7 @@ A focused CSV profiling workspace for a software/data portfolio. React + TypeScr
 - Automatic header-row detection that preserves every record in headerless CSV files.
 - Executive brief with readiness status, prioritized risks, business impact, and recommended actions.
 - Downloadable, print-ready executive brief with scoring limits and decision notes.
+- Evidence provenance with SHA-256 input fingerprint, analyzed row counts, deterministic method version, and a no-generated-values declaration.
 - Explicit header override when automatic detection needs human correction.
 - Light/dark themes, responsive layout, accessible labels, loading and error states.
 
@@ -53,7 +54,7 @@ npm ci
 npm run dev
 ```
 
-Open http://127.0.0.1:5173 and choose **Explore sample dataset**, or upload `samples/demo.csv`. Vite forwards `/api` to port 8000. The API documentation is at http://127.0.0.1:8000/docs. No environment secrets are required.
+Open http://127.0.0.1:5173 and upload a CSV whose source you can verify. Vite forwards `/api` to port 8000. The API documentation is at http://127.0.0.1:8000/docs. No environment secrets are required. `samples/demo.csv` is a fictional developer test fixture only; it is not offered in the production interface and must never be cited as business evidence.
 
 ## Architecture
 
@@ -64,16 +65,17 @@ frontend/
   src/report.ts     Private, browser-generated executive report
   src/types.ts      API response interfaces
   src/style.css     Tailwind import, theme tokens, responsive UI
-  public/demo.csv   Browser-accessible demo
 backend/
   app/main.py       HTTP validation, upload lifecycle, threadpool execution
   app/analysis.py   Pure deterministic parsing and profiling engine
   tests/           Engine edge cases and HTTP integration tests
-samples/demo.csv   Standalone synthetic demo data
+samples/demo.csv   Fictional developer test fixture; never business evidence
 docs/              Screenshot placeholders
 ```
 
 Flow: browser → multipart `POST /api/analyze?header_mode=auto` with an optional JSON `schema` form field → bounded file read → strict CSV parsing and header detection → governed naming/type overrides → Pandas normalization → NumPy statistics → executive risk summary → JSON → React views. The CPU-bound profiler runs in a worker thread. Data is held in memory for the request and in browser state for the current session; there is no app-level persistence. Framework multipart handling may spool larger uploads to temporary storage before the endpoint reads them.
+
+Every response includes an SHA-256 fingerprint of the exact uploaded bytes, input size, parsed and analyzed row counts, calculation method version, and an explicit `data_values_generated: false` provenance field. DataLens generates labels, metrics, and recommendations from deterministic rules; it does not invent or fill source values. Recommendations are procedural review steps rather than claims about the business.
 
 ## Scoring formula
 
@@ -135,7 +137,7 @@ Place actual captures in these locations before publishing your portfolio:
 
 | Capture                               | Placeholder               |
 | ------------------------------------- | ------------------------- |
-| Light overview with demo dataset      | `docs/overview-light.png` |
+| Light overview with cited public data | `docs/overview-light.png` |
 | Dark overview                         | `docs/overview-dark.png`  |
 | Column health and numeric exploration | `docs/explore.png`        |
 
@@ -143,9 +145,9 @@ See [capture checklist](docs/screenshots.md). These are explicitly placeholders,
 
 ## Roadmap
 
-- v0.5: custom missing markers, delimiter/encoding selection, XLSX, and configurable chart axes.
-- v0.6: date-series analysis and explicit business validity rules.
-- v0.7: saved quality policies, browser regression coverage, and dataset audit history.
+- v0.6: custom missing markers, delimiter/encoding selection, XLSX, and configurable chart axes.
+- v0.7: date-series analysis and explicit business validity rules.
+- v0.8: saved quality policies, browser regression coverage, and dataset audit history.
 
 ## References
 

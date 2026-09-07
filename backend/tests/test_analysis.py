@@ -132,3 +132,19 @@ def test_api_accepts_schema_configuration():
     )
     assert response.status_code == 200
     assert response.json()["columns"][1]["invalid"] == 1
+
+
+def test_provenance_fingerprints_the_exact_input_without_generating_values():
+    content = b"id,value\n1,10\n2,20\n"
+    result = analyze(content, "evidence.csv")
+    assert result["provenance"] == {
+        "source": "uploaded_file",
+        "sha256": "159f8bae5fa563fb61b540de391850552f9fe1d188273b1ca9ce182e4cbf4a26",
+        "input_bytes": len(content),
+        "file_rows": 3,
+        "analyzed_rows": 2,
+        "preview_rows": 2,
+        "method_version": "0.5.0",
+        "calculation_mode": "deterministic",
+        "data_values_generated": False,
+    }

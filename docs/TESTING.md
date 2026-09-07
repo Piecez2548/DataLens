@@ -5,9 +5,11 @@ Automated checks run on every push and pull request through GitHub Actions.
 ## Manual acceptance
 
 - Open Nexus, sign in, and choose DataLens from the project hub.
-- Load the sample dataset: expect 164 rows, 6 columns, 5 missing cells, 4 duplicates and 99.20 overall score.
+- Confirm production offers only file upload and does not preload or offer fictional business data.
+- For developer regression only, upload `samples/demo.csv`: expect 164 rows, 6 columns, 5 missing cells, 4 duplicates and 99.20 overall score. Never cite these fictional values as business evidence.
 - Confirm the Executive brief reports the risks, impact, and recommended next action before the detail metrics.
 - Export the executive brief, open the HTML file, and use Print / Save PDF; confirm dataset metadata, scores, findings, signals, and decision limits are present.
+- Confirm the page and exported report show the same SHA-256 fingerprint, input size, analyzed rows, method version, and source classification.
 - Upload a headerless CSV: expect every row to remain, generated `column_1…n` names, and `Review needed` even when the quality score is 100.
 - Give generated columns unique names, override an ID and email type, choose **Apply schema**, and confirm all source rows remain.
 - Use **Use first row as header** and confirm the dataset is reanalyzed with one fewer data row.
