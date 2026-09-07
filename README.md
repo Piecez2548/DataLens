@@ -2,6 +2,10 @@
 
 **Live demo:** https://datalens-kappa-one.vercel.app
 
+**GitHub:** https://github.com/Piecez2548/DataLens · **Nexus hub:** https://nexus-lemon-eight-32.vercel.app/projects
+
+DataLens is a standalone workspace linked from Nexus. It does not share authentication or uploaded data with Nexus. See [release test checklist](docs/TESTING.md).
+
 A focused CSV profiling workspace for a software/data portfolio. React + TypeScript + Tailwind + Recharts on the frontend; FastAPI + Pandas + NumPy on the backend. No AI API, database, or account required.
 
 ## v0.1 features
@@ -143,4 +147,4 @@ See [capture checklist](docs/screenshots.md). These are explicitly placeholders,
 
 ## Publish to GitHub
 
-After reviewing files, initialize Git in this folder, create a repository and push it. Dependencies, environments and build output are excluded by `.gitignore`; `frontend/package-lock.json` is included for reproducible installs. No GitHub repository has been created automatically.
+Source is published at `Piecez2548/DataLens`. Pushes and pull requests run frontend lint/build and backend lint/tests in GitHub Actions. Dependencies, environments and build output are excluded by `.gitignore`; `frontend/package-lock.json` is included for reproducible installs.
