@@ -16,6 +16,15 @@ import type { Analysis } from "./types";
 const Charts = lazy(() => import("./Charts"));
 const MAX_UPLOAD_MB = import.meta.env.PROD ? 4 : 10;
 const tabs = ["Overview", "Data quality", "Explore", "Data preview"] as const;
+const schemaTypes = [
+  "auto",
+  "identifier",
+  "email",
+  "numeric",
+  "categorical",
+  "datetime",
+  "boolean",
+] as const;
 const explanations: Record<string, string> = {
   Completeness: "Non-empty cells / all cells",
   Consistency: "Type-matching values / non-empty values",
@@ -33,10 +42,13 @@ export default function App() {
   const [dark, setDark] = useState(false);
   const [page, setPage] = useState(0);
   const [lastFile, setLastFile] = useState<File | null>(null);
+  const [columnNames, setColumnNames] = useState<string[]>([]);
+  const [columnTypes, setColumnTypes] = useState<string[]>([]);
   const input = useRef<HTMLInputElement>(null);
   async function upload(
     file: File,
     headerMode: "auto" | "present" | "absent" = "auto",
+    schema?: { column_names: string[]; type_overrides: Record<string, string> },
   ) {
     if (busy) return;
     if (
@@ -51,19 +63,18 @@ export default function App() {
     try {
       const body = new FormData();
       body.append("file", file);
+      if (schema) body.append("schema", JSON.stringify(schema));
       const response = await fetch(`/api/analyze?header_mode=${headerMode}`, {
         method: "POST",
         body,
       });
       if (!response.ok) {
-        const e = await response
-          .json()
-          .catch(() => ({
-            detail:
-              response.status === 413
-                ? "This file exceeds the hosting upload limit."
-                : "Analysis is temporarily unavailable. Please try again.",
-          }));
+        const e = await response.json().catch(() => ({
+          detail:
+            response.status === 413
+              ? "This file exceeds the hosting upload limit."
+              : "Analysis is temporarily unavailable. Please try again.",
+        }));
         throw new Error(
           typeof e.detail === "string"
             ? e.detail
@@ -73,6 +84,12 @@ export default function App() {
       const result: Analysis = await response.json();
       setData(result);
       setLastFile(file);
+      setColumnNames(result.columns.map((item) => item.name));
+      setColumnTypes(
+        result.columns.map((item) =>
+          item.type_overridden ? item.type : "auto",
+        ),
+      );
       setSelected(
         result.columns.find((c) => c.type === "numeric")?.name ??
           result.columns[0].name,
@@ -112,7 +129,7 @@ export default function App() {
         <a className="brand" href="#">
           <Aperture size={30} />
           <span>
-            DataLens<span className="version"> / 0.2</span>
+            DataLens<span className="version"> / 0.3</span>
           </span>
         </a>
         <a
@@ -137,7 +154,7 @@ export default function App() {
         <div className="side-bottom">
           A clearer view of your data.
           <br />
-          <span>Executive preview · v0.2</span>
+          <span>Executive preview · v0.3</span>
         </div>
       </aside>
       <main>
@@ -286,6 +303,45 @@ export default function App() {
                       </button>
                     </section>
                   )}
+                  {lastFile && (
+                    <SchemaSetup
+                      data={data}
+                      names={columnNames}
+                      types={columnTypes}
+                      busy={busy}
+                      onName={(index, value) =>
+                        setColumnNames(
+                          columnNames.map((name, item) =>
+                            item === index ? value : name,
+                          ),
+                        )
+                      }
+                      onType={(index, value) =>
+                        setColumnTypes(
+                          columnTypes.map((type, item) =>
+                            item === index ? value : type,
+                          ),
+                        )
+                      }
+                      onApply={() => {
+                        const overrides = Object.fromEntries(
+                          columnNames.flatMap((name, index) =>
+                            columnTypes[index] === "auto"
+                              ? []
+                              : [[name, columnTypes[index]]],
+                          ),
+                        );
+                        void upload(
+                          lastFile,
+                          data.header.used ? "present" : "absent",
+                          {
+                            column_names: columnNames,
+                            type_overrides: overrides,
+                          },
+                        );
+                      }}
+                    />
+                  )}
                   <div className="metrics">
                     {[
                       ["Total rows", fmt(data.rows), "Records in your dataset"],
@@ -353,6 +409,7 @@ export default function App() {
                               "Missing",
                               "Type mismatches",
                               "Invalid",
+                              "Outliers",
                               "Distinct",
                             ].map((h) => (
                               <th key={h}>{h}</th>
@@ -369,6 +426,7 @@ export default function App() {
                               <td>{c.missing}</td>
                               <td>{c.mismatches}</td>
                               <td>{c.invalid}</td>
+                              <td>{c.outliers}</td>
                               <td>{c.unique}</td>
                             </tr>
                           ))}
@@ -481,6 +539,87 @@ export default function App() {
     </div>
   );
 }
+function SchemaSetup({
+  data,
+  names,
+  types,
+  busy,
+  onName,
+  onType,
+  onApply,
+}: {
+  data: Analysis;
+  names: string[];
+  types: string[];
+  busy: boolean;
+  onName: (index: number, value: string) => void;
+  onType: (index: number, value: string) => void;
+  onApply: () => void;
+}) {
+  const duplicateNames = new Set(
+    names.filter((name, index) => names.indexOf(name) !== index),
+  );
+  const invalid = names.some((name) => !name.trim()) || duplicateNames.size > 0;
+  return (
+    <details className="panel schema-setup" open={data.header.generated_names}>
+      <summary>
+        <span>
+          <strong>Dataset setup</strong>
+          <small>
+            Name columns and confirm how each field should be treated.
+          </small>
+        </span>
+        <span>
+          {data.header.configured_names ? "Configured" : "Review schema"}
+        </span>
+      </summary>
+      <div className="schema-grid">
+        {data.columns.map((column, index) => (
+          <div className="schema-row" key={`${column.name}-${index}`}>
+            <label htmlFor={`column-name-${index}`}>Column {index + 1}</label>
+            <input
+              id={`column-name-${index}`}
+              value={names[index] ?? ""}
+              onChange={(event) => onName(index, event.target.value)}
+              aria-invalid={
+                !names[index]?.trim() || duplicateNames.has(names[index])
+              }
+            />
+            <select
+              aria-label={`Type for column ${index + 1}`}
+              value={types[index] ?? "auto"}
+              onChange={(event) => onType(index, event.target.value)}
+            >
+              {schemaTypes.map((type) => (
+                <option value={type} key={type}>
+                  {type === "auto" ? `Auto (${column.inferred_type})` : type}
+                </option>
+              ))}
+            </select>
+          </div>
+        ))}
+      </div>
+      {invalid && (
+        <p role="alert" className="schema-error">
+          Every column needs a unique name.
+        </p>
+      )}
+      <div className="schema-actions">
+        <p>
+          Applying this setup reanalyzes the original file in this browser
+          session.
+        </p>
+        <button
+          className="primary"
+          disabled={busy || invalid}
+          onClick={onApply}
+        >
+          Apply dataset setup
+        </button>
+      </div>
+    </details>
+  );
+}
 function ExecutiveBrief({ data }: { data: Analysis }) {
   const tone =
     data.executive.status === "Action required"
@@ -526,6 +665,11 @@ function ExecutiveBrief({ data }: { data: Analysis }) {
           <Check size={17} /> No supported structural issues detected.
         </p>
       )}
+      {data.executive.signals.map((signal) => (
+        <p className="signal" key={signal}>
+          <BarChart3 size={15} /> {signal}
+        </p>
+      ))}
       <p className="scope-note">{data.executive.scope_note}</p>
     </section>
   );

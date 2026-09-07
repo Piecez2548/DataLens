@@ -11,6 +11,8 @@ import pandas as pd
 MAX_BYTES = 10 * 1024 * 1024
 MAX_ROWS = 100_000
 MAX_COLUMNS = 100
+ALLOWED_TYPES = {"numeric", "categorical", "datetime", "boolean", "email", "identifier"}
+EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
 
 def _detect_header(text: str) -> bool:
@@ -55,7 +57,16 @@ def _detect_header(text: str) -> bool:
 
 
 def _executive_summary(
-    *, scores: dict, missing: int, duplicates: int, rows: int, mismatches: int, invalid: int, header_detected: bool
+    *,
+    scores: dict,
+    missing: int,
+    duplicates: int,
+    rows: int,
+    mismatches: int,
+    invalid: int,
+    header_detected: bool,
+    outliers: int,
+    correlations: list[dict],
 ) -> dict:
     issues = []
     if not header_detected:
@@ -104,6 +115,15 @@ def _executive_summary(
                 "recommendation": "Correct or exclude the invalid values with an auditable rule.",
             }
         )
+    if outliers:
+        issues.append(
+            {
+                "severity": "info",
+                "title": f"{outliers:,} statistical outliers deserve context",
+                "detail": "IQR flags unusual numeric values; unusual does not automatically mean incorrect.",
+                "recommendation": "Ask the data owner whether these represent valid edge cases, errors, or exceptional events.",
+            }
+        )
     high = sum(item["severity"] == "high" for item in issues)
     if high:
         status, message = "Action required", "Resolve high-impact data risks before executive reporting."
@@ -118,11 +138,21 @@ def _executive_summary(
         "issue_count": len(issues),
         "high_priority_count": high,
         "issues": issues[:6],
+        "signals": [
+            f"Strongest numeric relationship: {pair['left']} ↔ {pair['right']} ({pair['coefficient']:+.2f})."
+            for pair in correlations[:1]
+        ],
         "scope_note": "Automated structural checks only; business accuracy still requires an accountable owner.",
     }
 
 
-def analyze(content: bytes, filename: str, header_mode: str = "auto") -> dict:
+def analyze(
+    content: bytes,
+    filename: str,
+    header_mode: str = "auto",
+    column_names: list[str] | None = None,
+    type_overrides: dict[str, str] | None = None,
+) -> dict:
     if len(content) > MAX_BYTES:
         raise ValueError("CSV exceeds the 10 MB limit.")
     try:
@@ -151,6 +181,14 @@ def analyze(content: bytes, filename: str, header_mode: str = "auto") -> dict:
         else:
             headers = [f"column_{index + 1}" for index in range(width)]
             rows = all_rows
+        if column_names is not None:
+            if not isinstance(column_names, list) or not all(isinstance(name, str) for name in column_names):
+                raise ValueError("Column names must be a list of text values.")
+            if len(column_names) != width:
+                raise ValueError("The number of column names must match the CSV width.")
+            headers = [name.strip() for name in column_names]
+            if any(not name for name in headers):
+                raise ValueError("Column names cannot be empty.")
         if use_header and (not headers or any(not h for h in headers)):
             raise ValueError("Every column needs a non-empty header.")
         if len(set(headers)) != len(headers):
@@ -164,6 +202,15 @@ def analyze(content: bytes, filename: str, header_mode: str = "auto") -> dict:
     frame = pd.DataFrame(rows, columns=headers)
     normalized = frame.apply(lambda col: col.str.strip().replace("", None))
     n = len(frame)
+    type_overrides = type_overrides or {}
+    if not isinstance(type_overrides, dict) or not all(
+        isinstance(name, str) and isinstance(value, str) for name, value in type_overrides.items()
+    ):
+        raise ValueError("Type overrides must map column names to supported types.")
+    unknown_overrides = set(type_overrides) - set(headers)
+    invalid_override_types = set(type_overrides.values()) - ALLOWED_TYPES
+    if unknown_overrides or invalid_override_types:
+        raise ValueError("Schema overrides contain an unknown column or type.")
     columns, numeric = [], {}
     mismatches = invalid = checked = 0
     for name in headers:
@@ -181,9 +228,30 @@ def analyze(content: bytes, filename: str, header_mode: str = "auto") -> dict:
         kinds = values.map(kind)
         counts = Counter(kinds)
         dominant = counts.most_common(1)[0][0] if counts else "empty"
-        dtype = dominant if counts and counts[dominant] / len(values) >= 0.8 else "categorical"
-        mismatch = int((kinds != dtype).sum()) if dtype not in {"categorical", "empty"} else 0
-        matched = values[kinds == dtype]
+        inferred = dominant if counts and counts[dominant] / len(values) >= 0.8 else "categorical"
+        normalized_name = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
+        email_hits = int(values.map(lambda value: bool(EMAIL_PATTERN.fullmatch(value))).sum())
+        if values.size and ("email" in normalized_name or email_hits / len(values) >= 0.8):
+            inferred = "email"
+        numeric_values = pd.to_numeric(values, errors="coerce")
+        sequential_identifier = (
+            len(values) >= 3
+            and numeric_values.notna().all()
+            and values.nunique() == len(values)
+            and np.allclose(np.diff(numeric_values.astype(float)), 1)
+        )
+        if normalized_name in {"id", "customer_id", "record_id", "user_id"} or sequential_identifier:
+            inferred = "identifier"
+        dtype = type_overrides.get(name, inferred)
+        if dtype == "email":
+            mismatch = 0
+            matched = values
+        elif dtype == "identifier":
+            mismatch = 0
+            matched = values
+        else:
+            mismatch = int((kinds != dtype).sum()) if dtype not in {"categorical", "empty"} else 0
+            matched = values[kinds == dtype]
         bad = 0
         stats = None
         histogram = []
@@ -208,7 +276,9 @@ def analyze(content: bytes, filename: str, header_mode: str = "auto") -> dict:
                 ]
         elif dtype == "datetime":
             bad = int(pd.to_datetime(matched, format="%Y-%m-%d", errors="coerce").isna().sum())
-        if dtype in {"numeric", "datetime", "boolean"}:
+        elif dtype == "email":
+            bad = int((~matched.map(lambda value: bool(EMAIL_PATTERN.fullmatch(value)))).sum())
+        if dtype in {"numeric", "datetime", "boolean", "email"}:
             checked += len(matched)
             invalid += bad
         mismatches += mismatch
@@ -220,11 +290,20 @@ def analyze(content: bytes, filename: str, header_mode: str = "auto") -> dict:
                 "unique": int(values.nunique()),
                 "mismatches": mismatch,
                 "invalid": bad,
+                "outliers": 0,
+                "inferred_type": inferred,
+                "type_overridden": name in type_overrides,
                 "stats": stats,
                 "histogram": histogram,
                 "categories": [{"label": str(k), "count": int(v)} for k, v in values.value_counts().head(10).items()],
             }
         )
+        if dtype == "numeric" and stats:
+            q1, q3 = good.quantile([0.25, 0.75])
+            iqr = q3 - q1
+            outlier_count = int(((good < q1 - 1.5 * iqr) | (good > q3 + 1.5 * iqr)).sum()) if iqr else 0
+            columns[-1]["outliers"] = outlier_count
+            stats.update({"q1": float(q1), "q3": float(q3)})
     missing = int(normalized.isna().sum().sum())
     present = n * len(headers) - missing
     duplicates = int(normalized.duplicated().sum())
@@ -236,6 +315,17 @@ def analyze(content: bytes, filename: str, header_mode: str = "auto") -> dict:
     }
     available = [v for v in scores.values() if v is not None]
     scores["Overall"] = sum(available) / len(available)
+    numeric_frame = pd.DataFrame(numeric)
+    correlations = []
+    if len(numeric_frame.columns) >= 2:
+        matrix = numeric_frame.corr(min_periods=3)
+        for left_index, left in enumerate(matrix.columns):
+            for right in matrix.columns[left_index + 1 :]:
+                coefficient = matrix.loc[left, right]
+                if pd.notna(coefficient):
+                    correlations.append({"left": left, "right": right, "coefficient": round(float(coefficient), 4)})
+        correlations.sort(key=lambda item: abs(item["coefficient"]), reverse=True)
+    outliers = sum(column["outliers"] for column in columns)
     executive = _executive_summary(
         scores=scores,
         missing=missing,
@@ -243,13 +333,18 @@ def analyze(content: bytes, filename: str, header_mode: str = "auto") -> dict:
         rows=n,
         mismatches=mismatches,
         invalid=invalid,
-        header_detected=use_header,
+        header_detected=use_header or column_names is not None,
+        outliers=outliers,
+        correlations=correlations,
     )
     numeric_names = list(numeric)
     scatter = []
     if len(numeric_names) >= 2:
-        pairs = pd.DataFrame({"x": numeric[numeric_names[0]], "y": numeric[numeric_names[1]]}).dropna()
+        scatter_axes = [correlations[0]["left"], correlations[0]["right"]] if correlations else numeric_names[:2]
+        pairs = pd.DataFrame({"x": numeric[scatter_axes[0]], "y": numeric[scatter_axes[1]]}).dropna()
         scatter = pairs.head(500).to_dict("records")
+    else:
+        scatter_axes = numeric_names[:2]
     return {
         "filename": filename,
         "rows": n,
@@ -261,11 +356,13 @@ def analyze(content: bytes, filename: str, header_mode: str = "auto") -> dict:
             "mode": header_mode,
             "detected": detected_header,
             "used": use_header,
-            "generated_names": not use_header,
+            "generated_names": not use_header and column_names is None,
+            "configured_names": column_names is not None,
         },
         "executive": executive,
         "columns": columns,
         "preview": normalized.head(100).where(normalized.head(100).notna(), None).to_dict("records"),
         "scatter": scatter,
-        "scatter_axes": numeric_names[:2],
+        "scatter_axes": scatter_axes,
+        "correlations": correlations[:10],
     }

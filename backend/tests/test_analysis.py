@@ -1,4 +1,5 @@
 import pytest
+import json
 from fastapi.testclient import TestClient
 from app.analysis import analyze
 from app.main import app
@@ -83,3 +84,51 @@ def test_api_accepts_header_override():
     assert response.status_code == 200
     assert response.json()["rows"] == 2
     assert response.json()["header"]["generated_names"] is True
+
+
+def test_semantic_email_and_identifier_detection_improve_validity_scope():
+    result = analyze(
+        b"customer_id,email\n1,ada@example.com\n2,invalid\n3,grace@example.com\n",
+        "contacts.csv",
+    )
+    assert result["columns"][0]["type"] == "identifier"
+    assert result["columns"][1]["type"] == "email"
+    assert result["columns"][1]["invalid"] == 1
+    assert result["scores"]["Validity"] == 66.67
+    assert result["executive"]["status"] == "Action required"
+
+
+def test_iqr_outliers_and_strongest_correlation_are_reported():
+    result = analyze(
+        b"amount,revenue\n1,10\n2,20\n3,30\n4,40\n100,1000\n",
+        "metrics.csv",
+    )
+    assert result["columns"][0]["outliers"] == 1
+    assert result["correlations"][0]["coefficient"] > 0.99
+    assert result["scatter_axes"] == ["amount", "revenue"]
+    assert result["executive"]["signals"]
+
+
+def test_schema_configuration_names_columns_without_dropping_first_row():
+    result = analyze(
+        b"1,ada@example.com\n2,grace@example.com\n",
+        "contacts.csv",
+        "absent",
+        ["customer_id", "email"],
+        {"customer_id": "identifier", "email": "email"},
+    )
+    assert result["rows"] == 2
+    assert result["header"]["configured_names"] is True
+    assert result["header"]["generated_names"] is False
+    assert [column["type"] for column in result["columns"]] == ["identifier", "email"]
+
+
+def test_api_accepts_schema_configuration():
+    client = TestClient(app)
+    schema = json.dumps({"column_names": ["customer_id", "email"], "type_overrides": {"email": "email"}})
+    response = client.post(
+        "/api/analyze?header_mode=absent",
+        files={"file": ("contacts.csv", b"1,ada@example.com\n2,bad\n"), "schema": (None, schema)},
+    )
+    assert response.status_code == 200
+    assert response.json()["columns"][1]["invalid"] == 1

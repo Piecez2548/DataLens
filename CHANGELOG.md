@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.0 — Governed schema and deeper evidence
+
+- Let users name columns and override inferred types, then reanalyze the unchanged source file.
+- Recognize identifier and email fields, validate basic email shape, and exclude identifiers from numeric findings.
+- Add IQR outlier counts and Pearson correlations with explicit statistical limits.
+- Use the strongest correlated pair for the scatter preview and surface it as an executive signal.
+- Validate the supplied 1,000-row customer file without committing its contents.
+- Expand backend coverage from 14 to 18 tests.
+
 ## 0.2.0 — Executive readiness foundation
 
 - Detect headerless CSV files and preserve the first record instead of silently using it as column names.

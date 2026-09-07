@@ -8,12 +8,13 @@ DataLens is a standalone workspace linked from Nexus. It does not share authenti
 
 A focused CSV profiling workspace for a software/data portfolio. React + TypeScript + Tailwind + Recharts on the frontend; FastAPI + Pandas + NumPy on the backend. No AI API, database, or account required.
 
-## v0.2 features
+## v0.3 features
 
 - Upload or drop a UTF-8 CSV; bundled retail demo (164 rows).
-- Schema inference: numeric, categorical, ISO date, boolean, empty.
+- Schema inference: numeric, categorical, ISO date, boolean, email, identifier, empty.
+- Editable column names and governed type overrides without discarding source rows.
 - Table preview with pagination, missing cells, duplicates, column health.
-- Numeric count, min, max, mean, median, population standard deviation.
+- Numeric count, min, max, mean, median, population standard deviation, IQR outliers, and Pearson correlations.
 - Histogram, top-category bar chart, schema donut, numeric scatter plot.
 - Four transparent quality dimensions and an overall score.
 - Automatic header-row detection that preserves every record in headerless CSV files.
@@ -70,7 +71,7 @@ samples/demo.csv   Standalone synthetic demo data
 docs/              Screenshot placeholders
 ```
 
-Flow: browser → multipart `POST /api/analyze?header_mode=auto` → bounded file read → strict CSV parsing and header detection → Pandas normalization → NumPy statistics → executive risk summary → JSON → React views. The CPU-bound profiler runs in a worker thread. Data is held in memory for the request and in browser state for the current session; there is no app-level persistence. Framework multipart handling may spool larger uploads to temporary storage before the endpoint reads them.
+Flow: browser → multipart `POST /api/analyze?header_mode=auto` with an optional JSON `schema` form field → bounded file read → strict CSV parsing and header detection → governed naming/type overrides → Pandas normalization → NumPy statistics → executive risk summary → JSON → React views. The CPU-bound profiler runs in a worker thread. Data is held in memory for the request and in browser state for the current session; there is no app-level persistence. Framework multipart handling may spool larger uploads to temporary storage before the endpoint reads them.
 
 ## Scoring formula
 
@@ -86,11 +87,11 @@ Let R = rows, C = columns, M = empty cells after trimming, P = R×C−M, T = typ
 
 Scores are rounded to two decimals. Duplicate comparison uses trimmed strings and normalized blanks across all columns; numeric spellings such as `1` and `1.0` remain different. Only empty/whitespace cells are missing: literal `NA`, `null`, and `nan` are not silently discarded.
 
-Each non-empty token is classified as boolean (`true`/`false`, case insensitive), numeric (decimal/scientific notation or nonfinite tokens), date-shaped (`YYYY-MM-DD`), or categorical. A non-text type is selected only if at least 80% of non-empty tokens match it; otherwise the column is categorical. All-empty columns use `empty`. Leading-zero identifiers can therefore be inferred as numeric; schema overrides are a roadmap item. Raw preview strings preserve leading zeros.
+Each non-empty token is classified as boolean (`true`/`false`, case insensitive), numeric (decimal/scientific notation or nonfinite tokens), date-shaped (`YYYY-MM-DD`), email-shaped, or categorical. A non-text type is selected only if at least 80% of non-empty tokens match it; otherwise the column is categorical. Common ID names and unique sequential number columns are inferred as identifiers. All-empty columns use `empty`. Users can rename columns and override the inferred types; raw preview strings preserve leading zeros.
 
-Consistency checks lexical agreement with the inferred type. Validity separately checks matching numeric tokens for finiteness and matching date tokens for a real calendar date within Pandas' supported timestamp range. Matching boolean tokens are valid. Mismatches do not enter the validity denominator; categorical values have no validity rule. The UI displays N/A when no typed checks are possible. A text-heavy dataset can score highly despite factual errors: these are profiling heuristics, **not a certification of data accuracy**.
+Consistency checks lexical agreement with the inferred type. Validity separately checks matching numeric tokens for finiteness, matching date tokens for a real calendar date within Pandas' supported timestamp range, and email values for a basic address shape. Matching boolean tokens are valid. Mismatches do not enter the validity denominator; categorical and identifier values have no validity rule. The UI displays N/A when no typed checks are possible. A text-heavy dataset can score highly despite factual errors: these are profiling heuristics, **not a certification of data accuracy**.
 
-Statistics and histograms exclude missing, mismatched and nonfinite numeric values. Standard deviation uses `ddof=0`. Histograms use up to 12 equal-width bins. Categories show the ten most frequent non-empty values. Scatter uses the first two numeric columns and up to the first 500 complete finite pairs; this is a preview, not a representative statistical sample.
+Statistics and histograms exclude missing, mismatched and nonfinite numeric values. Standard deviation uses `ddof=0`. Potential outliers use the standard 1.5×IQR rule. Pearson correlations require at least three complete finite pairs and do not imply causation. Histograms use up to 12 equal-width bins. Categories show the ten most frequent non-empty values. Scatter uses the strongest available correlated numeric pair and up to the first 500 complete finite pairs; this is a preview, not a representative statistical sample.
 
 ## Limits and deployment
 
@@ -105,7 +106,7 @@ The included deployment configuration sets a 60-second function limit and exclud
 - UTF-8 comma-separated CSV only; quoted delimiters/newlines are supported.
 - 10 MB, 100,000 rows, 100 columns; header-only, malformed, duplicate-header and binary inputs are rejected.
 - Preview: first 100 rows, ten per page. Full data is analyzed within the limits.
-- No domain validity rules, time series chart, outlier detection, XLSX or persistence yet.
+- No domain-specific validity rules, time series chart, XLSX or persistence yet.
 - Header detection is heuristic. The response states what was used and the interface offers a manual override.
 - Intended as a local MVP. For deployment, host `frontend/dist` with an HTTP reverse proxy routing `/api` to FastAPI. Vite's production preview does not provide the development API proxy.
 - Before exposing publicly, configure HTTPS, request-body limits at the proxy (including multipart overhead), authentication if needed, rate limits and concurrency/resource limits. The application size check runs after multipart parsing.
@@ -140,9 +141,9 @@ See [capture checklist](docs/screenshots.md). These are explicitly placeholders,
 
 ## Roadmap
 
-- v0.3: column naming and schema overrides, custom missing markers, delimiter/encoding selection, XLSX.
-- v0.4: date-series charts, configurable scatter axes, correlations and IQR outliers.
-- v0.5: explicit column validity rules, downloadable reports and browser regression tests.
+- v0.4: custom missing markers, delimiter/encoding selection, XLSX, and configurable chart axes.
+- v0.5: date-series analysis, explicit business validity rules, and downloadable executive reports.
+- v0.6: saved quality policies, browser regression coverage, and dataset audit history.
 
 ## References
 

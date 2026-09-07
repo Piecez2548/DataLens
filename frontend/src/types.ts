@@ -5,6 +5,9 @@ export interface Column {
   unique: number;
   mismatches: number;
   invalid: number;
+  outliers: number;
+  inferred_type: string;
+  type_overridden: boolean;
   stats: Record<string, number> | null;
   histogram: { label: string; count: number }[];
   categories: { label: string; count: number }[];
@@ -21,6 +24,7 @@ export interface Analysis {
     detected: boolean;
     used: boolean;
     generated_names: boolean;
+    configured_names: boolean;
   };
   executive: {
     status: "Ready for exploration" | "Review needed" | "Action required";
@@ -35,9 +39,11 @@ export interface Analysis {
       recommendation: string;
     }[];
     scope_note: string;
+    signals: string[];
   };
   columns: Column[];
   preview: Record<string, string | null>[];
   scatter: { x: number; y: number }[];
   scatter_axes: string[];
+  correlations: { left: string; right: string; coefficient: number }[];
 }
