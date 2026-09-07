@@ -12,6 +12,134 @@
   font-weight: 400;
   color-scheme: light;
 }
+
+.executive {
+  margin-bottom: 20px;
+  border-left: 4px solid #2e9b7f;
+}
+.executive.review {
+  border-left-color: #d6a43a;
+}
+.executive.danger {
+  border-left-color: #d65d67;
+}
+.executive-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  align-items: flex-start;
+}
+.executive-heading h2 {
+  font-size: 24px;
+  margin-top: 8px;
+}
+.executive-count {
+  text-align: right;
+  min-width: 105px;
+}
+.executive-count strong {
+  display: block;
+  font-size: 32px;
+  line-height: 1;
+}
+.executive-count span {
+  font-size: 11px;
+  color: var(--muted);
+}
+.issue-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 21px;
+}
+.issue {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 15px;
+  background: var(--bg);
+  border-radius: 8px;
+}
+.issue h3 {
+  margin: 1px 0 4px;
+}
+.issue p {
+  font-size: 12px;
+  line-height: 1.55;
+}
+.issue small {
+  display: block;
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.55;
+}
+.severity {
+  flex: none;
+  padding: 3px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.7px;
+}
+.severity.high {
+  background: #d65d6720;
+  color: #d65d67;
+}
+.severity.medium {
+  background: #d6a43a20;
+  color: #b17c16;
+}
+.severity.info {
+  background: #6866ea20;
+  color: var(--accent);
+}
+.scope-note {
+  border-top: 1px solid var(--border);
+  padding-top: 13px;
+  margin-top: 18px;
+  font-size: 11px;
+}
+.no-issues {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #2e9b7f;
+  margin-top: 20px;
+}
+.header-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 13px;
+  padding: 16px 18px;
+  margin-bottom: 20px;
+  border: 1px solid #d6a43a66;
+  border-radius: 9px;
+  background: #d6a43a0d;
+  color: #b17c16;
+}
+.header-notice div {
+  flex: 1;
+}
+.header-notice p {
+  font-size: 12px;
+  margin: 3px 0;
+}
+.header-notice button {
+  flex: none;
+}
+
+@media (max-width: 800px) {
+  .issue-list {
+    grid-template-columns: 1fr;
+  }
+  .header-notice {
+    flex-wrap: wrap;
+  }
+  .header-notice button {
+    margin-left: 33px;
+  }
+}
 * {
   box-sizing: border-box;
 }

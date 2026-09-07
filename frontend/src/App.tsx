@@ -4,6 +4,7 @@ import {
   ArrowUpRight,
   BarChart3,
   Check,
+  CircleAlert,
   Database,
   FileSpreadsheet,
   Moon,
@@ -31,8 +32,12 @@ export default function App() {
   const [error, setError] = useState("");
   const [dark, setDark] = useState(false);
   const [page, setPage] = useState(0);
+  const [lastFile, setLastFile] = useState<File | null>(null);
   const input = useRef<HTMLInputElement>(null);
-  async function upload(file: File) {
+  async function upload(
+    file: File,
+    headerMode: "auto" | "present" | "absent" = "auto",
+  ) {
     if (busy) return;
     if (
       !file.name.toLowerCase().endsWith(".csv") ||
@@ -46,9 +51,19 @@ export default function App() {
     try {
       const body = new FormData();
       body.append("file", file);
-      const response = await fetch("/api/analyze", { method: "POST", body });
+      const response = await fetch(`/api/analyze?header_mode=${headerMode}`, {
+        method: "POST",
+        body,
+      });
       if (!response.ok) {
-        const e = await response.json().catch(() => ({ detail: response.status === 413 ? "This file exceeds the hosting upload limit." : "Analysis is temporarily unavailable. Please try again." }));
+        const e = await response
+          .json()
+          .catch(() => ({
+            detail:
+              response.status === 413
+                ? "This file exceeds the hosting upload limit."
+                : "Analysis is temporarily unavailable. Please try again.",
+          }));
         throw new Error(
           typeof e.detail === "string"
             ? e.detail
@@ -57,6 +72,7 @@ export default function App() {
       }
       const result: Analysis = await response.json();
       setData(result);
+      setLastFile(file);
       setSelected(
         result.columns.find((c) => c.type === "numeric")?.name ??
           result.columns[0].name,
@@ -96,10 +112,16 @@ export default function App() {
         <a className="brand" href="#">
           <Aperture size={30} />
           <span>
-            DataLens<span className="version"> / 0.1</span>
+            DataLens<span className="version"> / 0.2</span>
           </span>
         </a>
-        <a href="https://nexus-lemon-eight-32.vercel.app/projects" className="text-button" style={{ marginTop: 24, fontSize: 14 }}>← Back to Nexus</a>
+        <a
+          href="https://nexus-lemon-eight-32.vercel.app/projects"
+          className="text-button"
+          style={{ marginTop: 24, fontSize: 14 }}
+        >
+          ← Back to Nexus
+        </a>
         <div className="workspace-label">WORKSPACE</div>
         <div className="nav-active">
           <Database size={18} /> Dataset explorer
@@ -115,7 +137,7 @@ export default function App() {
         <div className="side-bottom">
           A clearer view of your data.
           <br />
-          <span>Portfolio edition · v0.1</span>
+          <span>Executive preview · v0.2</span>
         </div>
       </aside>
       <main>
@@ -202,7 +224,8 @@ export default function App() {
                 <ArrowUpRight size={17} />
               </button>
               <small>
-                UTF-8 CSV · up to {MAX_UPLOAD_MB} MB · 100,000 rows · 100 columns
+                UTF-8 CSV · up to {MAX_UPLOAD_MB} MB · 100,000 rows · 100
+                columns
               </small>
               <div className="demo-row">
                 <span>Just looking around?</span>
@@ -241,6 +264,28 @@ export default function App() {
               </nav>
               {tab === "Overview" && (
                 <>
+                  <ExecutiveBrief data={data} />
+                  {data.header.generated_names && (
+                    <section className="header-notice" role="status">
+                      <CircleAlert size={20} />
+                      <div>
+                        <strong>No header row detected</strong>
+                        <p>
+                          All {fmt(data.rows)} rows were kept as data. Neutral
+                          names were generated so the quality score does not
+                          hide a structural issue.
+                        </p>
+                      </div>
+                      <button
+                        disabled={busy || !lastFile}
+                        onClick={() =>
+                          lastFile && void upload(lastFile, "present")
+                        }
+                      >
+                        Use first row as header
+                      </button>
+                    </section>
+                  )}
                   <div className="metrics">
                     {[
                       ["Total rows", fmt(data.rows), "Records in your dataset"],
@@ -434,6 +479,55 @@ export default function App() {
         </div>
       </main>
     </div>
+  );
+}
+function ExecutiveBrief({ data }: { data: Analysis }) {
+  const tone =
+    data.executive.status === "Action required"
+      ? "danger"
+      : data.executive.status === "Review needed"
+        ? "review"
+        : "ready";
+  return (
+    <section
+      className={`panel executive ${tone}`}
+      aria-labelledby="executive-title"
+    >
+      <div className="executive-heading">
+        <div>
+          <span className="eyebrow">EXECUTIVE BRIEF</span>
+          <h2 id="executive-title">{data.executive.status}</h2>
+          <p>{data.executive.message}</p>
+        </div>
+        <div className="executive-count">
+          <strong>{data.executive.issue_count}</strong>
+          <span>items to review</span>
+        </div>
+      </div>
+      {data.executive.issues.length > 0 ? (
+        <div className="issue-list">
+          {data.executive.issues.map((issue) => (
+            <article className="issue" key={issue.title}>
+              <span className={`severity ${issue.severity}`}>
+                {issue.severity}
+              </span>
+              <div>
+                <h3>{issue.title}</h3>
+                <p>{issue.detail}</p>
+                <small>
+                  <strong>Next:</strong> {issue.recommendation}
+                </small>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p className="no-issues">
+          <Check size={17} /> No supported structural issues detected.
+        </p>
+      )}
+      <p className="scope-note">{data.executive.scope_note}</p>
+    </section>
   );
 }
 function Quality({ data }: { data: Analysis }) {

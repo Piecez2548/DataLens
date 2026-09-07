@@ -8,7 +8,7 @@ DataLens is a standalone workspace linked from Nexus. It does not share authenti
 
 A focused CSV profiling workspace for a software/data portfolio. React + TypeScript + Tailwind + Recharts on the frontend; FastAPI + Pandas + NumPy on the backend. No AI API, database, or account required.
 
-## v0.1 features
+## v0.2 features
 
 - Upload or drop a UTF-8 CSV; bundled retail demo (164 rows).
 - Schema inference: numeric, categorical, ISO date, boolean, empty.
@@ -16,6 +16,9 @@ A focused CSV profiling workspace for a software/data portfolio. React + TypeScr
 - Numeric count, min, max, mean, median, population standard deviation.
 - Histogram, top-category bar chart, schema donut, numeric scatter plot.
 - Four transparent quality dimensions and an overall score.
+- Automatic header-row detection that preserves every record in headerless CSV files.
+- Executive brief with readiness status, prioritized risks, business impact, and recommended actions.
+- Explicit header override when automatic detection needs human correction.
 - Light/dark themes, responsive layout, accessible labels, loading and error states.
 
 ## Quick start
@@ -67,7 +70,7 @@ samples/demo.csv   Standalone synthetic demo data
 docs/              Screenshot placeholders
 ```
 
-Flow: browser → multipart `POST /api/analyze` → bounded file read → strict CSV parsing → Pandas normalization → NumPy statistics → JSON → React views. The CPU-bound profiler runs in a worker thread. Data is held in memory for the request and in browser state for the current session; there is no app-level persistence. Framework multipart handling may spool larger uploads to temporary storage before the endpoint reads them.
+Flow: browser → multipart `POST /api/analyze?header_mode=auto` → bounded file read → strict CSV parsing and header detection → Pandas normalization → NumPy statistics → executive risk summary → JSON → React views. The CPU-bound profiler runs in a worker thread. Data is held in memory for the request and in browser state for the current session; there is no app-level persistence. Framework multipart handling may spool larger uploads to temporary storage before the endpoint reads them.
 
 ## Scoring formula
 
@@ -103,6 +106,7 @@ The included deployment configuration sets a 60-second function limit and exclud
 - 10 MB, 100,000 rows, 100 columns; header-only, malformed, duplicate-header and binary inputs are rejected.
 - Preview: first 100 rows, ten per page. Full data is analyzed within the limits.
 - No domain validity rules, time series chart, outlier detection, XLSX or persistence yet.
+- Header detection is heuristic. The response states what was used and the interface offers a manual override.
 - Intended as a local MVP. For deployment, host `frontend/dist` with an HTTP reverse proxy routing `/api` to FastAPI. Vite's production preview does not provide the development API proxy.
 - Before exposing publicly, configure HTTPS, request-body limits at the proxy (including multipart overhead), authentication if needed, rate limits and concurrency/resource limits. The application size check runs after multipart parsing.
 
@@ -136,9 +140,9 @@ See [capture checklist](docs/screenshots.md). These are explicitly placeholders,
 
 ## Roadmap
 
-- v0.2: schema overrides, custom missing markers, delimiter/encoding selection, XLSX.
-- v0.3: date-series charts, configurable scatter axes, correlations and IQR outliers.
-- v0.4: explicit column validity rules, downloadable reports and browser regression tests.
+- v0.3: column naming and schema overrides, custom missing markers, delimiter/encoding selection, XLSX.
+- v0.4: date-series charts, configurable scatter axes, correlations and IQR outliers.
+- v0.5: explicit column validity rules, downloadable reports and browser regression tests.
 
 ## References
 

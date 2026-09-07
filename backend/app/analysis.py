@@ -13,7 +13,116 @@ MAX_ROWS = 100_000
 MAX_COLUMNS = 100
 
 
-def analyze(content: bytes, filename: str) -> dict:
+def _detect_header(text: str) -> bool:
+    """Use Python's conservative structural heuristic on a bounded sample."""
+    try:
+        if csv.Sniffer().has_header(text[:8192]):
+            return True
+    except csv.Error:
+        pass
+    rows = csv.reader(io.StringIO(text))
+    first = next(rows, [])
+    second = next(rows, [])
+    common_labels = {
+        "id",
+        "name",
+        "first_name",
+        "last_name",
+        "email",
+        "date",
+        "time",
+        "amount",
+        "value",
+        "group",
+        "category",
+        "country",
+        "region",
+        "status",
+        "type",
+        "description",
+        "quantity",
+        "price",
+        "revenue",
+    }
+    normalized = [cell.strip().lower().replace(" ", "_") for cell in first]
+    label_shaped = all(re.fullmatch(r"[a-z_][a-z0-9_-]*", cell) for cell in normalized)
+    data_shaped_second_row = any(
+        re.fullmatch(r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?", cell.strip())
+        or re.fullmatch(r"\d{4}-\d{2}-\d{2}", cell.strip())
+        for cell in second
+    )
+    return bool(label_shaped and (any(cell in common_labels for cell in normalized) or data_shaped_second_row))
+
+
+def _executive_summary(
+    *, scores: dict, missing: int, duplicates: int, rows: int, mismatches: int, invalid: int, header_detected: bool
+) -> dict:
+    issues = []
+    if not header_detected:
+        issues.append(
+            {
+                "severity": "medium",
+                "title": "Column names are missing",
+                "detail": "The first row appears to contain data, so neutral column names were generated.",
+                "recommendation": "Rename columns before sharing or connecting this dataset to reporting tools.",
+            }
+        )
+    if missing:
+        ratio = missing / max(1, rows)
+        issues.append(
+            {
+                "severity": "high" if ratio >= 0.05 else "medium",
+                "title": f"{missing:,} missing cells need review",
+                "detail": "Blank values can change totals, averages, and segment counts.",
+                "recommendation": "Confirm whether blanks mean unknown, not applicable, or a data collection failure.",
+            }
+        )
+    if duplicates:
+        issues.append(
+            {
+                "severity": "high" if duplicates / rows >= 0.02 else "medium",
+                "title": f"{duplicates:,} duplicate rows may overstate results",
+                "detail": "Repeated records can inflate counts and monetary totals.",
+                "recommendation": "Confirm the business key, then remove only records proven to be duplicates.",
+            }
+        )
+    if mismatches:
+        issues.append(
+            {
+                "severity": "medium",
+                "title": f"{mismatches:,} values conflict with their column type",
+                "detail": "Mixed types can break sorting, aggregation, and downstream imports.",
+                "recommendation": "Standardize the flagged values before analysis.",
+            }
+        )
+    if invalid:
+        issues.append(
+            {
+                "severity": "high",
+                "title": f"{invalid:,} typed values are invalid",
+                "detail": "These values match the expected shape but fail a basic validity check.",
+                "recommendation": "Correct or exclude the invalid values with an auditable rule.",
+            }
+        )
+    high = sum(item["severity"] == "high" for item in issues)
+    if high:
+        status, message = "Action required", "Resolve high-impact data risks before executive reporting."
+    elif issues:
+        status, message = "Review needed", "The dataset is usable for exploration after the listed checks."
+    else:
+        status, message = "Ready for exploration", "No structural issues were found by the supported checks."
+    return {
+        "status": status,
+        "message": message,
+        "quality_score": round(scores["Overall"], 2),
+        "issue_count": len(issues),
+        "high_priority_count": high,
+        "issues": issues[:6],
+        "scope_note": "Automated structural checks only; business accuracy still requires an accountable owner.",
+    }
+
+
+def analyze(content: bytes, filename: str, header_mode: str = "auto") -> dict:
     if len(content) > MAX_BYTES:
         raise ValueError("CSV exceeds the 10 MB limit.")
     try:
@@ -22,25 +131,32 @@ def analyze(content: bytes, filename: str) -> dict:
         raise ValueError("Use a UTF-8 encoded CSV file.") from exc
     if "\x00" in text:
         raise ValueError("The file contains binary data.")
+    if header_mode not in {"auto", "present", "absent"}:
+        raise ValueError("header_mode must be auto, present, or absent.")
     try:
         reader = csv.reader(io.StringIO(text), strict=True)
-        headers = next(reader)
-        if not headers or any(not h.strip() for h in headers):
+        all_rows = [row for row in reader if row]
+        if not all_rows:
+            raise ValueError("The CSV is empty or malformed.")
+        width = len(all_rows[0])
+        if width > MAX_COLUMNS:
+            raise ValueError("Maximum 100 columns supported.")
+        if any(len(row) != width for row in all_rows):
+            raise ValueError("Every row must have the same number of fields.")
+        detected_header = _detect_header(text)
+        use_header = detected_header if header_mode == "auto" else header_mode == "present"
+        if use_header:
+            headers = [h.strip() for h in all_rows[0]]
+            rows = all_rows[1:]
+        else:
+            headers = [f"column_{index + 1}" for index in range(width)]
+            rows = all_rows
+        if use_header and (not headers or any(not h for h in headers)):
             raise ValueError("Every column needs a non-empty header.")
-        headers = [h.strip() for h in headers]
         if len(set(headers)) != len(headers):
             raise ValueError("Column names must be unique.")
-        if len(headers) > MAX_COLUMNS:
-            raise ValueError("Maximum 100 columns supported.")
-        rows = []
-        for row in reader:
-            if not row:
-                continue
-            if len(row) != len(headers):
-                raise ValueError("Every row must have the same number of fields as the header.")
-            rows.append(row)
-            if len(rows) > MAX_ROWS:
-                raise ValueError("Maximum 100,000 rows supported.")
+        if len(rows) > MAX_ROWS:
+            raise ValueError("Maximum 100,000 rows supported.")
     except (StopIteration, csv.Error) as exc:
         raise ValueError("The CSV is empty or malformed.") from exc
     if not rows:
@@ -120,6 +236,15 @@ def analyze(content: bytes, filename: str) -> dict:
     }
     available = [v for v in scores.values() if v is not None]
     scores["Overall"] = sum(available) / len(available)
+    executive = _executive_summary(
+        scores=scores,
+        missing=missing,
+        duplicates=duplicates,
+        rows=n,
+        mismatches=mismatches,
+        invalid=invalid,
+        header_detected=use_header,
+    )
     numeric_names = list(numeric)
     scatter = []
     if len(numeric_names) >= 2:
@@ -132,6 +257,13 @@ def analyze(content: bytes, filename: str) -> dict:
         "missing": missing,
         "duplicates": duplicates,
         "scores": {k: round(v, 2) if v is not None else None for k, v in scores.items()},
+        "header": {
+            "mode": header_mode,
+            "detected": detected_header,
+            "used": use_header,
+            "generated_names": not use_header,
+        },
+        "executive": executive,
         "columns": columns,
         "preview": normalized.head(100).where(normalized.head(100).notna(), None).to_dict("records"),
         "scatter": scatter,

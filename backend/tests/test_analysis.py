@@ -47,3 +47,39 @@ def test_api_upload():
     assert response.json()["scatter"] == [{"x": 1, "y": 2}, {"x": 3, "y": 4}]
     assert client.post("/api/analyze", files={"file": ("bad.txt", b"x\n1")}).status_code == 400
     assert client.post("/api/analyze", files={"file": ("bad.csv", b"x\n")}).status_code == 400
+
+
+def test_headerless_csv_keeps_first_record_and_warns_executives():
+    content = b"1,Marie,100.00\n2,Alex,250.00\n3,Sam,125.00\n"
+    result = analyze(content, "customers.csv")
+    assert result["rows"] == 3
+    assert result["header"]["generated_names"] is True
+    assert result["columns"][0]["name"] == "column_1"
+    assert result["preview"][0]["column_2"] == "Marie"
+    assert result["executive"]["status"] == "Review needed"
+    assert result["executive"]["issues"][0]["title"] == "Column names are missing"
+
+
+def test_header_mode_can_override_detection():
+    content = b"id,name\n1,Ada\n2,Grace\n"
+    result = analyze(content, "people.csv", "absent")
+    assert result["rows"] == 3
+    assert result["header"]["used"] is False
+    assert result["preview"][0] == {"column_1": "id", "column_2": "name"}
+
+
+def test_executive_summary_prioritizes_invalid_values():
+    result = analyze(b"date\n2026-02-30\n2026-01-01\n", "dates.csv", "present")
+    assert result["executive"]["status"] == "Action required"
+    assert result["executive"]["high_priority_count"] == 1
+
+
+def test_api_accepts_header_override():
+    client = TestClient(app)
+    response = client.post(
+        "/api/analyze?header_mode=absent",
+        files={"file": ("demo.csv", b"1,A\n2,B\n")},
+    )
+    assert response.status_code == 200
+    assert response.json()["rows"] == 2
+    assert response.json()["header"]["generated_names"] is True
