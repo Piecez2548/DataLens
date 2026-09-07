@@ -4,6 +4,8 @@
 
 Published to https://datalens-kappa-one.vercel.app on Vercel. Deployment status: Ready. Unauthenticated HTTPS checks passed for the homepage, `/api/health`, and multipart `/api/analyze`. The v0.5 production workflow accepts only user-uploaded source files and does not offer fictional business data. Validation used a local, uncommitted 1,000-row customer file that has no header row. That file was reanalyzed with governed column names and type overrides: all 1,000 records remained, the ID was excluded from numeric analysis, and all 1,000 email values passed the basic format check. Its independently calculated SHA-256 fingerprint matched the response provenance, which also reported 73,426 input bytes, 1,000 analyzed rows, deterministic method v0.5.0, and no generated data values. The browser-generated executive report passes TypeScript compilation, ESLint, and the production build. Frontend lint/build and all 19 backend tests pass.
 
+Additional production checks used two other existing local files without displaying or committing their row values. `Products.csv` returned 80 rows, two columns, no missing or duplicate rows, and `Ready for exploration`. The Looker Studio milk dataset returned 10 rows, seven columns, no missing or duplicate rows, eight IQR outliers, ten reported numeric correlations, and `Review needed`. Both API responses matched independently calculated SHA-256 fingerprints and declared no generated data values. A matching fingerprint proves which exact bytes were analyzed; it does not independently prove that facts recorded inside a source file are true.
+
 Validated on Windows, Node 22.22.3, Python 3.11.9.
 
 | Check                                  | Result                                      |
@@ -13,8 +15,10 @@ Validated on Windows, Node 22.22.3, Python 3.11.9.
 | Backend Ruff                           | Passed                                      |
 | Pytest                                 | 19 passed                                   |
 | HTTP smoke test through Vite API proxy | Passed                                      |
-| Demo upload                            | 164 rows, 4 duplicates, overall score 99.20 |
+| Developer fixture regression           | 164 rows, 4 duplicates, overall score 99.20 |
 | Headerless customer upload with schema | 1,000 rows, ready for exploration           |
+| Products upload                        | 80 rows, ready for exploration              |
+| Looker Studio milk upload              | 10 rows, 8 outliers, review needed          |
 | Executive report export                | Self-contained HTML with print/PDF styling  |
 | Exact-input provenance                 | Independent SHA-256 match                   |
 
