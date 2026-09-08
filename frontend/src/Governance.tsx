@@ -11,11 +11,13 @@ export type GovernanceInput = {
 export function UploadPolicy({
   value,
   authorized,
+  ready,
   onChange,
   onAuthorized,
 }: {
   value: GovernanceInput;
   authorized: boolean;
+  ready: boolean;
   onChange: (value: GovernanceInput) => void;
   onAuthorized: (value: boolean) => void;
 }) {
@@ -23,13 +25,18 @@ export function UploadPolicy({
     <section className="panel upload-policy">
       <div><span className="eyebrow">DATA GOVERNANCE</span><h2>Declare the source before upload</h2><p>These fields travel with the analysis record; CSV values are discarded after the request.</p></div>
       <div className="governance-fields">
-        <label>Data owner<input required value={value.owner} maxLength={120} onChange={(e) => onChange({ ...value, owner: e.target.value })} placeholder="Team or accountable owner" /></label>
+        <label>Data owner <span className="required-mark">Required</span><input required value={value.owner} maxLength={120} onChange={(e) => onChange({ ...value, owner: e.target.value })} placeholder="Team or accountable owner" /></label>
         <label>Classification<select value={value.classification} onChange={(e) => onChange({ ...value, classification: e.target.value as GovernanceInput["classification"] })}><option value="public">Public</option><option value="internal">Internal</option><option value="confidential">Confidential</option></select></label>
-        <label>Source URL (HTTPS)<input type="url" value={value.source_url} onChange={(e) => onChange({ ...value, source_url: e.target.value })} placeholder="https://official-source.example" /></label>
-        <label>Source verified on<input type="date" value={value.verified_at} onChange={(e) => onChange({ ...value, verified_at: e.target.value })} /></label>
-        <label className="wide">Purpose<input required value={value.purpose} maxLength={200} onChange={(e) => onChange({ ...value, purpose: e.target.value })} placeholder="Decision or report this analysis supports" /></label>
+        <label>Source URL (HTTPS) <span className="optional-mark">Optional</span><input type="url" value={value.source_url} onChange={(e) => onChange({ ...value, source_url: e.target.value })} placeholder="https://official-source.example" /></label>
+        <label>Source verified on <span className="optional-mark">Optional</span><input type="date" value={value.verified_at} onChange={(e) => onChange({ ...value, verified_at: e.target.value })} /></label>
+        <label className="wide">Purpose <span className="required-mark">Required</span><input required value={value.purpose} maxLength={200} onChange={(e) => onChange({ ...value, purpose: e.target.value })} placeholder="Decision or report this analysis supports" /></label>
       </div>
       <label className="authorization"><input type="checkbox" checked={authorized} onChange={(e) => onAuthorized(e.target.checked)} /> I am authorized to process this file under the selected classification.</label>
+      <p className={`upload-readiness ${ready ? "ready" : ""}`} role="status" aria-live="polite">
+        {ready
+          ? "Ready to upload. Choose a CSV file to begin analysis."
+          : "Enter the data owner and purpose, then confirm your authorization to enable upload."}
+      </p>
     </section>
   );
 }

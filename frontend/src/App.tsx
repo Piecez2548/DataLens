@@ -68,6 +68,9 @@ export default function App() {
   >({});
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const input = useRef<HTMLInputElement>(null);
+  const governanceReady = Boolean(
+    authorized && governance.owner.trim() && governance.purpose.trim(),
+  );
   async function upload(
     file: File,
     headerMode: "auto" | "present" | "absent" = "auto",
@@ -277,7 +280,7 @@ export default function App() {
             </div>
             <button
               className="primary"
-            disabled={busy || !authorized}
+            disabled={busy || !governanceReady}
               onClick={() => input.current?.click()}
             >
               <Upload size={17} />
@@ -298,8 +301,19 @@ export default function App() {
           <UploadPolicy
             value={governance}
             authorized={authorized}
-            onChange={setGovernance}
-            onAuthorized={setAuthorized}
+            ready={governanceReady}
+            onChange={(next) => {
+              setGovernance(next);
+              if (error.includes("Data owner and analysis purpose")) {
+                setError("");
+              }
+            }}
+            onAuthorized={(next) => {
+              setAuthorized(next);
+              if (next && error.includes("authorized to process")) {
+                setError("");
+              }
+            }}
           />
           {error && (
             <div role="alert" className="error">
@@ -333,10 +347,14 @@ export default function App() {
               <p>Drop a CSV file here to explore its quality and structure.</p>
               <button
                 className="primary"
-                disabled={busy || !authorized}
+                disabled={busy || !governanceReady}
                 onClick={() => input.current?.click()}
               >
-                {busy ? "Analyzing…" : "Choose a CSV file"}
+                {busy
+                  ? "Analyzing…"
+                  : governanceReady
+                    ? "Choose a CSV file"
+                    : "Complete required details"}
                 <ArrowUpRight size={17} />
               </button>
               <small>

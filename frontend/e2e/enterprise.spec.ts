@@ -7,11 +7,16 @@ test("analyzes a real CSV with governance, rules, and signed review", async ({
   await page.goto("/");
   await expect(page.getByRole("heading", { name: /Good insights/ })).toBeVisible();
 
-  const choose = page.getByRole("button", { name: /Choose a CSV file/ });
-  await expect(choose).toBeDisabled();
+  const incomplete = page.getByRole("button", {
+    name: "Complete required details",
+  });
+  await expect(incomplete).toBeDisabled();
   await page.getByLabel("Data owner").fill("Data Operations");
   await page.getByLabel("Purpose").fill("Release verification");
   await page.getByLabel(/I am authorized to process this file/).check();
+  await expect(
+    page.getByRole("button", { name: "Choose a CSV file" }),
+  ).toBeEnabled();
   await page
     .getByLabel("Upload CSV file")
     .setInputFiles(path.resolve("../samples/demo.csv"));
@@ -32,5 +37,5 @@ test("analyzes a real CSV with governance, rules, and signed review", async ({
 
   await page.getByRole("button", { name: "Clear dataset" }).click();
   await expect(page.getByRole("heading", { name: /next discovery/ })).toBeVisible();
-  await expect(choose).toBeDisabled();
+  await expect(incomplete).toBeDisabled();
 });

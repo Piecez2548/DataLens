@@ -960,6 +960,29 @@ footer span:first-child {
 .governance-fields .wide, .rule-row .wide { grid-column: 1 / -1; }
 .authorization { display: flex; align-items: center; gap: 9px; margin-top: 17px; font-size: 12px; font-weight: 700; }
 .authorization input { accent-color: var(--accent); }
+.required-mark,
+.optional-mark {
+  float: right;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.required-mark { color: #b43d49; }
+.upload-readiness {
+  margin: 13px 0 0;
+  padding: 11px 13px;
+  border-radius: 7px;
+  background: #d6a43a12;
+  color: #8b640f !important;
+  font-size: 12px;
+  font-weight: 650;
+}
+.upload-readiness.ready {
+  background: #2e9b7f12;
+  color: #247c68 !important;
+}
 .governance-panel { margin: 20px 0; }
 .governance-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 18px 0; }
 .governance-summary div { padding: 13px; border: 1px solid var(--border); border-radius: 7px; }
