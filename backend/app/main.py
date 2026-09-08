@@ -17,7 +17,7 @@ class AuditRequest(BaseModel):
     analysis_id: str = Field(pattern=r"^[a-f0-9]{64}$")
     note: str = Field(default="", max_length=500)
 
-app = FastAPI(title="DataLens API", version="0.6.0")
+app = FastAPI(title="DataLens API", version="0.6.1")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -76,10 +76,6 @@ async def upload(
             raise HTTPException(400, "Governance metadata is too long.")
         if declared.get("classification") not in {None, "public", "internal", "confidential"}:
             raise HTTPException(400, "Data classification is invalid.")
-        if auth_required() and (
-            not declared.get("owner", "").strip() or not declared.get("purpose", "").strip()
-        ):
-            raise HTTPException(400, "Data owner and analysis purpose are required.")
         if declared.get("source_url") and not declared["source_url"].startswith("https://"):
             raise HTTPException(400, "Source URL must use HTTPS.")
         result = await run_in_threadpool(

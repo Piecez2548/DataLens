@@ -4,10 +4,10 @@
 
 DataLens is a governed CSV profiling workspace for evidence-led decisions. It uses the same Supabase account as Nexus, calculates every metric deterministically from the uploaded bytes, and does not call an AI API. The service does not persist CSV contents.
 
-## v0.6.0
+## v0.6.1
 
 - Supabase authentication with allowlisted roles and a shared Nexus account.
-- Explicit data owner, classification, source, verification date, purpose, and uploader authorization.
+- One-step CSV upload with source details, business rules, and approval available after analysis.
 - UTF-8 CSV preview, schema inference, governed names and type overrides.
 - Missing cells, duplicates, numeric statistics, IQR outliers, Pearson correlations, and adaptive charts.
 - Transparent Completeness, Consistency, Uniqueness, Validity, and Overall scores.

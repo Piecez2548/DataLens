@@ -7,35 +7,33 @@ test("analyzes a real CSV with governance, rules, and signed review", async ({
   await page.goto("/");
   await expect(page.getByRole("heading", { name: /Good insights/ })).toBeVisible();
 
-  const incomplete = page.getByRole("button", {
-    name: "Complete required details",
-  });
-  await expect(incomplete).toBeDisabled();
-  await page.getByLabel("Data owner").fill("Data Operations");
-  await page.getByLabel("Purpose").fill("Release verification");
-  await page.getByLabel(/I am authorized to process this file/).check();
-  await expect(
-    page.getByRole("button", { name: "Choose a CSV file" }),
-  ).toBeEnabled();
+  const choose = page.getByRole("button", { name: "Choose a CSV file" });
+  await expect(choose).toBeEnabled();
   await page
     .getByLabel("Upload CSV file")
     .setInputFiles(path.resolve("../samples/demo.csv"));
 
   await expect(page.getByText("Analysis complete")).toBeVisible();
   await expect(page.getByText("164 rows · 6 columns")).toBeVisible();
-  await expect(page.getByText("Request only")).toBeVisible();
-  await expect(page.getByText("Data Operations")).toBeVisible();
 
-  await page.getByText("Configure business validity rules").click();
+  await page.getByText("Prepare an executive report").click();
+  await page.getByLabel(/Data owner/).fill("Data Operations");
+  await page.getByLabel(/Report purpose/).fill("Release verification");
+  await page.getByLabel(/I am allowed to use this file/).check();
+  await page.getByRole("button", { name: "Add report details" }).click();
+  await expect(page.getByText("Details added")).toBeVisible();
+
+  await page.getByText("Advanced checks and approval").click();
+  await page.getByText("Set business rules", { exact: true }).click();
   const revenueRule = page.locator(".rule-row").filter({ hasText: "revenue" });
-  await revenueRule.getByLabel("Min").fill("0");
-  await page.getByRole("button", { name: /Apply rules/ }).click();
-  await expect(page.getByText("All configured business rules passed.")).toBeVisible();
+  await revenueRule.getByLabel("Minimum").fill("0");
+  await page.getByRole("button", { name: "Check these rules" }).click();
+  await expect(page.getByText("All business rules passed.")).toBeVisible();
 
-  await page.getByRole("button", { name: "Mark reviewed" }).click();
+  await page.getByRole("button", { name: "Mark as reviewed" }).click();
   await expect(page.getByText(/2 event\(s\).*analysis.reviewed/)).toBeVisible();
 
   await page.getByRole("button", { name: "Clear dataset" }).click();
   await expect(page.getByRole("heading", { name: /next discovery/ })).toBeVisible();
-  await expect(incomplete).toBeDisabled();
+  await expect(choose).toBeEnabled();
 });

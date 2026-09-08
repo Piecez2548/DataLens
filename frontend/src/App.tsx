@@ -81,14 +81,6 @@ export default function App() {
     },
   ) {
     if (busy) return;
-    if (!authorized) {
-      setError("Confirm that you are authorized to process this file before upload.");
-      return;
-    }
-    if (!governance.owner.trim() || !governance.purpose.trim()) {
-      setError("Data owner and analysis purpose are required before upload.");
-      return;
-    }
     if (
       !file.name.toLowerCase().endsWith(".csv") ||
       file.size > MAX_UPLOAD_MB * 1024 * 1024
@@ -216,7 +208,7 @@ export default function App() {
         <a className="brand" href="#">
           <Aperture size={30} />
           <span>
-            DataLens<span className="version"> / 0.6.0</span>
+            DataLens<span className="version"> / 0.6.1</span>
           </span>
         </a>
         <a
@@ -241,7 +233,7 @@ export default function App() {
         <div className="side-bottom">
           A clearer view of your data.
           <br />
-          <span>Governed workspace · v0.6.0</span>
+          <span>Simple analysis · v0.6.1</span>
         </div>
       </aside>
       <main>
@@ -280,7 +272,7 @@ export default function App() {
             </div>
             <button
               className="primary"
-            disabled={busy || !governanceReady}
+              disabled={busy}
               onClick={() => input.current?.click()}
             >
               <Upload size={17} />
@@ -296,23 +288,6 @@ export default function App() {
             onChange={(e) => {
               const f = e.target.files?.[0];
               if (f) void upload(f);
-            }}
-          />
-          <UploadPolicy
-            value={governance}
-            authorized={authorized}
-            ready={governanceReady}
-            onChange={(next) => {
-              setGovernance(next);
-              if (error.includes("Data owner and analysis purpose")) {
-                setError("");
-              }
-            }}
-            onAuthorized={(next) => {
-              setAuthorized(next);
-              if (next && error.includes("authorized to process")) {
-                setError("");
-              }
             }}
           />
           {error && (
@@ -347,14 +322,10 @@ export default function App() {
               <p>Drop a CSV file here to explore its quality and structure.</p>
               <button
                 className="primary"
-                disabled={busy || !governanceReady}
+                disabled={busy}
                 onClick={() => input.current?.click()}
               >
-                {busy
-                  ? "Analyzing…"
-                  : governanceReady
-                    ? "Choose a CSV file"
-                    : "Complete required details"}
+                {busy ? "Analyzing…" : "Choose a CSV file"}
                 <ArrowUpRight size={17} />
               </button>
               <small>
@@ -416,43 +387,6 @@ export default function App() {
               {tab === "Overview" && (
                 <>
                   <ExecutiveBrief data={data} />
-                  <GovernancePanel
-                    data={data}
-                    rules={businessRules}
-                    auditEvents={auditEvents}
-                    busy={busy}
-                    canApprove={
-                      ["admin", "approver", "developer"].includes(role) &&
-                      data.executive.status === "Ready for exploration" &&
-                      data.business_rules.configured &&
-                      data.business_rules.passed
-                    }
-                    onRule={(name, rule) =>
-                      setBusinessRules((rules) => ({ ...rules, [name]: rule }))
-                    }
-                    onApplyRules={() => {
-                      if (!lastFile) return;
-                      const overrides = Object.fromEntries(
-                        columnNames.flatMap((name, index) =>
-                          columnTypes[index] === "auto"
-                            ? []
-                            : [[name, columnTypes[index]]],
-                        ),
-                      );
-                      void upload(
-                        lastFile,
-                        data.header.used ? "present" : "absent",
-                        {
-                          column_names: columnNames,
-                          type_overrides: overrides,
-                          business_rules: businessRules,
-                        },
-                      );
-                    }}
-                    onAudit={(action, note) =>
-                      void recordAudit(action, note)
-                    }
-                  />
                   {data.header.generated_names && (
                     <section className="header-notice" role="status">
                       <CircleAlert size={20} />
@@ -559,6 +493,75 @@ export default function App() {
                       <Charts data={data} column={column} />
                     </Suspense>
                   )}
+                  {lastFile && (
+                    <UploadPolicy
+                      value={governance}
+                      authorized={authorized}
+                      ready={governanceReady}
+                      busy={busy}
+                      saved={Boolean(
+                        data.governance.declared.owner &&
+                          data.governance.declared.purpose,
+                      )}
+                      onChange={setGovernance}
+                      onAuthorized={setAuthorized}
+                      onSave={() => {
+                        const overrides = Object.fromEntries(
+                          columnNames.flatMap((name, index) =>
+                            columnTypes[index] === "auto"
+                              ? []
+                              : [[name, columnTypes[index]]],
+                          ),
+                        );
+                        void upload(
+                          lastFile,
+                          data.header.used ? "present" : "absent",
+                          {
+                            column_names: columnNames,
+                            type_overrides: overrides,
+                            business_rules: businessRules,
+                          },
+                        );
+                      }}
+                    />
+                  )}
+                  <GovernancePanel
+                    data={data}
+                    rules={businessRules}
+                    auditEvents={auditEvents}
+                    busy={busy}
+                    canApprove={
+                      ["admin", "approver", "developer"].includes(role) &&
+                      data.executive.status === "Ready for exploration" &&
+                      data.business_rules.configured &&
+                      data.business_rules.passed
+                    }
+                    onRule={(name, rule) =>
+                      setBusinessRules((rules) => ({ ...rules, [name]: rule }))
+                    }
+                    onApplyRules={() => {
+                      if (!lastFile) return;
+                      const overrides = Object.fromEntries(
+                        columnNames.flatMap((name, index) =>
+                          columnTypes[index] === "auto"
+                            ? []
+                            : [[name, columnTypes[index]]],
+                        ),
+                      );
+                      void upload(
+                        lastFile,
+                        data.header.used ? "present" : "absent",
+                        {
+                          column_names: columnNames,
+                          type_overrides: overrides,
+                          business_rules: businessRules,
+                        },
+                      );
+                    }}
+                    onAudit={(action, note) =>
+                      void recordAudit(action, note)
+                    }
+                  />
                 </>
               )}
               {tab === "Data quality" && (

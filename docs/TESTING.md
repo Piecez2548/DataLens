@@ -5,7 +5,7 @@ Automated checks run on every push and pull request through GitHub Actions.
 ## Manual acceptance
 
 - Open Nexus, choose DataLens from the project hub, and sign in with the same Supabase-backed Nexus identity.
-- Confirm upload stays disabled until an owner, purpose, and authorization declaration are present.
+- Confirm a user can upload immediately, then optionally add owner/source details for an executive report.
 - Confirm production offers only file upload and does not preload or offer fictional business data.
 - For developer regression only, upload `samples/demo.csv`: expect 164 rows, 6 columns, 5 missing cells, 4 duplicates and 99.20 overall score. Never cite these fictional values as business evidence.
 - Confirm the Executive brief reports the risks, impact, and recommended next action before the detail metrics.
