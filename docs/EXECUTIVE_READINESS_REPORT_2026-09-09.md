@@ -29,7 +29,9 @@ Five independent specialist roles reviewed product UX, analytical correctness, s
 
 - Backend: 40 tests pass, including adversarial CSV and fabricated audit-evidence cases.
 - Frontend: TypeScript production build, ESLint, and Playwright E2E pass.
-- Existing production v0.6.1 enforced login, HSTS, CSP, frame denial, and no-store responses. v0.7.0 must be redeployed and rechecked before this report is final release evidence.
+- Production v0.7.0 was deployed from implementation commit `6bf446745bfcee91980fbf6a2e4ff8c19e1fd838`. The matching CI run passed: https://github.com/Piecez2548/DataLens/actions/runs/34255065964.
+- Production verification confirmed authentication is required; unauthenticated analyze and approve requests return 401; health responses are no-store; HSTS and the narrowed Supabase CSP are present; hashed assets are immutable for one year; the chart chunk is not preloaded on the sign-in page; and the visible sign-in button is 44px high with an opaque accent background.
+- Production smoke workflow run #1 passed against v0.7.0: https://github.com/Piecez2548/DataLens/actions/runs/34255445049.
 - SHA-256 proves byte identity only. It does not prove factual truth, source authority, lawful basis, business completeness, or absence of upstream manipulation.
 - HMAC events can be checked only by the service that controls the secret. Downloaded HTML is editable and is not an append-only organizational audit log.
 
@@ -47,7 +49,7 @@ Before any personal or sensitive data is permitted, the operator and Thai counse
 ## Operational work still required
 
 - Gate production deployment on all CI jobs rather than deploying before checks finish.
-- Run and prove the scheduled production smoke workflow; add an authenticated synthetic-data smoke account covering analyze, review, approve, and report state.
+- Add a dedicated authenticated synthetic-data smoke account covering analyze, review, approve, and report state. The current scheduled smoke covers only public health, headers, and unauthenticated rejection.
 - Add centralized metrics, structured security logs, alert routing, shared rate limiting, quota/concurrency controls, and a tested capacity budget.
 - Test rollback with environment snapshot, named owner, RTO/RPO, and post-rollback smoke checks.
 - Replace the direct dependency list with a reproducible transitive Python lock and pin the runtime; pin CI actions to reviewed commit SHAs.
