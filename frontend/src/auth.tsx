@@ -86,7 +86,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         <div className="auth-brand"><Aperture size={30} /> DataLens</div>
         <span className="eyebrow">ENTERPRISE ACCESS</span>
         <h1>Sign in with your Nexus account</h1>
-        <p>Only authenticated users can transmit a dataset to the analysis service.</p>
+        <p>Profile a CSV, check structural quality, and create a reviewable draft. This release accepts synthetic or confirmed non-personal data only.</p>
         <form onSubmit={(event) => void submit(event)}>
           <label htmlFor="auth-email">Email</label>
           <input id="auth-email" type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} />
@@ -95,7 +95,10 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
           {error && <p className="auth-error" role="alert">{error}</p>}
           <button className="primary" disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button>
         </form>
-        <a href="https://nexus-lemon-eight-32.vercel.app/forgot-password">Forgot password?</a>
+        <div className="auth-links">
+          <a href="https://nexus-lemon-eight-32.vercel.app/forgot-password">Forgot password?</a>
+          <a href="https://nexus-lemon-eight-32.vercel.app/projects">Back to Nexus</a>
+        </div>
       </section>
     </div>
   );

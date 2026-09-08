@@ -144,7 +144,7 @@ def test_provenance_fingerprints_the_exact_input_without_generating_values():
         "file_rows": 3,
         "analyzed_rows": 2,
         "preview_rows": 2,
-        "method_version": "0.6.1",
+        "method_version": "0.7.0",
         "calculation_mode": "deterministic",
         "data_values_generated": False,
     }
@@ -189,15 +189,70 @@ def test_api_requires_a_session_when_enterprise_auth_is_enabled(monkeypatch):
     assert response.headers["cache-control"] == "no-store, max-age=0"
 
 
-def test_review_and_approval_events_are_signed_in_local_development():
+def test_hosted_deployment_fails_closed_when_auth_flag_is_missing(monkeypatch):
+    monkeypatch.delenv("DATALENS_AUTH_REQUIRED", raising=False)
+    monkeypatch.setenv("VERCEL", "1")
+    response = TestClient(app).post("/api/analyze", files={"file": ("demo.csv", b"x\n1\n")})
+    assert response.status_code == 401
+
+
+def test_review_and_approval_require_bound_signed_evidence():
     client = TestClient(app)
-    payload = {"analysis_id": "a" * 64, "note": "Evidence checked"}
+    schema = json.dumps(
+        {
+            "governance": {
+                "owner": "Finance",
+                "purpose": "Monthly review",
+                "classification": "internal",
+                "authorized_to_process": True,
+            },
+            "business_rules": {"amount": {"min": 0}},
+        }
+    )
+    analysis = client.post(
+        "/api/analyze?header_mode=present",
+        files={"file": ("demo.csv", b"amount\n10\n"), "schema": (None, schema)},
+    ).json()
+    payload = {
+        "analysis_id": analysis["governance"]["analysis_id"],
+        "analysis_event": analysis["audit_event"],
+        "note": "Evidence checked",
+    }
     reviewed = client.post("/api/audit/review", json=payload)
-    approved = client.post("/api/audit/approve", json=payload)
+    approved = client.post("/api/audit/approve", json={**payload, "review_event": reviewed.json()})
     assert reviewed.status_code == 200
     assert approved.status_code == 200
     assert reviewed.json()["signature_algorithm"] == "HMAC-SHA256"
     assert approved.json()["action"] == "analysis.approved"
+
+
+def test_audit_rejects_fabricated_or_tampered_analysis_evidence():
+    client = TestClient(app)
+    fabricated = {
+        "analysis_id": "a" * 64,
+        "analysis_event": {
+            "action": "analysis.completed",
+            "analysis_id": "a" * 64,
+            "signature": "0" * 64,
+            "signature_algorithm": "HMAC-SHA256",
+        },
+    }
+    assert client.post("/api/audit/review", json=fabricated).status_code == 400
+
+
+def test_approval_rejects_incomplete_analysis_even_with_valid_service_event():
+    client = TestClient(app)
+    analysis = client.post(
+        "/api/analyze?header_mode=present",
+        files={"file": ("demo.csv", b"amount\n10\n")},
+    ).json()
+    payload = {
+        "analysis_id": analysis["governance"]["analysis_id"],
+        "analysis_event": analysis["audit_event"],
+    }
+    review = client.post("/api/audit/review", json=payload).json()
+    response = client.post("/api/audit/approve", json={**payload, "review_event": review})
+    assert response.status_code == 409
 
 
 def test_valid_supabase_session_is_verified_and_actor_is_recorded(monkeypatch):
@@ -232,11 +287,12 @@ def test_valid_supabase_session_is_verified_and_actor_is_recorded(monkeypatch):
     monkeypatch.setenv("DATALENS_AUDIT_SECRET", "test-only-secret")
     monkeypatch.setattr("app.security.httpx.AsyncClient", Client)
     schema = {
-        "governance": {
-            "owner": "Finance",
-            "purpose": "Monthly review",
-            "classification": "internal",
-        }
+            "governance": {
+                "owner": "Finance",
+                "purpose": "Monthly review",
+                "classification": "internal",
+                "authorized_to_process": True,
+            }
     }
     response = TestClient(app).post(
         "/api/analyze",
@@ -256,3 +312,76 @@ def test_numeric_business_rule_rejects_a_text_column():
             "regions.csv",
             business_rules={"region": {"min": 0}},
         )
+
+
+def test_auto_header_does_not_drop_an_ambiguous_text_row():
+    result = analyze(b"Al,NY\nCharlotte,California\nBenjamin,Washington\n", "places.csv")
+    assert result["header"]["used"] is False
+    assert result["rows"] == 3
+    assert result["preview"][0] == {"column_1": "Al", "column_2": "NY"}
+
+
+@pytest.mark.parametrize(
+    ("content", "expected_type"),
+    [
+        (b"amount\n10\n20\noops\n", "numeric"),
+        (b"date\n2024-01-01\n2024-01-02\nbad\n", "datetime"),
+        (b"flag\ntrue\nfalse\nmaybe\n", "boolean"),
+    ],
+)
+def test_dominant_typed_values_expose_dirty_minority(content, expected_type):
+    result = analyze(content, "dirty.csv", "present")
+    assert result["columns"][0]["type"] == expected_type
+    assert result["columns"][0]["mismatches"] == 1
+    assert result["scores"]["Overall"] < 100
+    assert result["executive"]["status"] == "Review needed"
+
+
+def test_sequential_business_measures_remain_numeric():
+    result = analyze(b"age,sales\n20,100\n21,101\n22,102\n23,103\n", "measures.csv")
+    assert [column["type"] for column in result["columns"]] == ["numeric", "numeric"]
+    assert result["columns"][0]["stats"]["mean"] == 21.5
+    assert result["correlations"]
+
+
+@pytest.mark.parametrize("delimiter", [b";", b"\t"])
+def test_likely_alternate_delimiter_is_rejected(delimiter):
+    content = delimiter.join([b"name", b"amount"]) + b"\n" + delimiter.join([b"A", b"10"]) + b"\n"
+    with pytest.raises(ValueError, match="semicolon or tab delimiter"):
+        analyze(content, "wrong-delimiter.csv")
+
+
+def test_missing_issue_severity_uses_all_cells_as_denominator():
+    headers = ",".join(f"c{i}" for i in range(100))
+    values = ",".join([""] + ["x"] * 99)
+    result = analyze(f"{headers}\n{values}\n".encode(), "wide.csv", "present")
+    missing_issue = next(issue for issue in result["executive"]["issues"] if "missing" in issue["title"])
+    assert result["scores"]["Completeness"] == 99
+    assert missing_issue["severity"] == "medium"
+
+
+def test_business_rule_findings_are_never_truncated():
+    result = analyze(
+        b'id,date,email,amount,embedded\n1,2024-02-30,bad,1,"| a | b |"\n1,2024-02-30,bad,,"| a | b |"\n100,2024-01-01,a@example.com,1000,"| a | b |"\n',
+        "many-issues.csv",
+        business_rules={"amount": {"required": True, "max": 100}},
+    )
+    assert len(result["executive"]["issues"]) == result["executive"]["issue_count"]
+    assert any("business-rule" in issue["title"] for issue in result["executive"]["issues"])
+
+
+def test_empty_or_disabled_rules_are_not_reported_as_configured():
+    assert analyze(b"amount\n10\n", "rules.csv", business_rules={"amount": {}})["business_rules"]["configured"] is False
+    assert analyze(b"amount\n10\n", "rules.csv", business_rules={"amount": {"required": False}})["business_rules"]["configured"] is False
+
+
+def test_numeric_rule_rejects_boolean_and_inverted_range():
+    with pytest.raises(ValueError, match="finite numbers"):
+        analyze(b"amount\n10\n", "rules.csv", business_rules={"amount": {"min": True}})
+    with pytest.raises(ValueError, match="no greater than maximum"):
+        analyze(b"amount\n10\n", "rules.csv", business_rules={"amount": {"min": 20, "max": 10}})
+
+
+def test_blank_physical_record_is_not_silently_discarded():
+    with pytest.raises(ValueError, match="same number of fields"):
+        analyze(b"value\n1\n\n2\n", "blank-row.csv", "present")

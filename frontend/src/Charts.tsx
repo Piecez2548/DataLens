@@ -42,7 +42,7 @@ export default function Charts({
           </div>
           <span className="badge">{column.type}</span>
         </div>
-        <div className="chart">
+        <div className="chart" aria-hidden="true">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={values}>
               <CartesianGrid vertical={false} stroke="var(--border)" />
@@ -63,6 +63,13 @@ export default function Charts({
             </BarChart>
           </ResponsiveContainer>
         </div>
+        <details className="chart-data">
+          <summary>View chart values as a table</summary>
+          <table>
+            <thead><tr><th>Value or range</th><th>Count</th></tr></thead>
+            <tbody>{values.map((item) => <tr key={item.label}><td>{item.label}</td><td>{item.count}</td></tr>)}</tbody>
+          </table>
+        </details>
       </section>
       <section className="panel">
         <div className="section-title">
@@ -71,7 +78,7 @@ export default function Charts({
             <p>Inferred schema across the dataset</p>
           </div>
         </div>
-        <div className="chart">
+        <div className="chart" aria-hidden="true">
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Pie
@@ -91,6 +98,13 @@ export default function Charts({
             </PieChart>
           </ResponsiveContainer>
         </div>
+        <details className="chart-data">
+          <summary>View column types as a table</summary>
+          <table>
+            <thead><tr><th>Detected type</th><th>Columns</th></tr></thead>
+            <tbody>{types.map((item) => <tr key={item.name}><td>{item.name}</td><td>{item.value}</td></tr>)}</tbody>
+          </table>
+        </details>
       </section>
       <section className="panel wide">
         <div className="section-title">
@@ -104,7 +118,7 @@ export default function Charts({
           </div>
         </div>
         {data.scatter.length ? (
-          <div className="chart">
+          <div className="chart" aria-hidden="true">
             <ResponsiveContainer width="100%" height="100%">
               <ScatterChart margin={{ bottom: 20, right: 20 }}>
                 <CartesianGrid stroke="var(--border)" />
@@ -131,6 +145,16 @@ export default function Charts({
           </div>
         ) : (
           <div className="chart-empty">No numeric pairs available</div>
+        )}
+        {data.scatter.length > 0 && (
+          <details className="chart-data">
+            <summary>View plotted pairs as a table</summary>
+            <table>
+              <thead><tr><th>{data.scatter_axes[0]}</th><th>{data.scatter_axes[1]}</th></tr></thead>
+              <tbody>{data.scatter.slice(0, 100).map((item, index) => <tr key={index}><td>{item.x}</td><td>{item.y}</td></tr>)}</tbody>
+            </table>
+            {data.scatter.length > 100 && <p>Showing the first 100 of {data.scatter.length} plotted pairs.</p>}
+          </details>
         )}
       </section>
     </div>

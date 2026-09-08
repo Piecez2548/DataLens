@@ -20,7 +20,11 @@ class UserContext:
 
 
 def auth_required() -> bool:
-    return os.environ.get("DATALENS_AUTH_REQUIRED", "false").lower() == "true"
+    configured = os.environ.get("DATALENS_AUTH_REQUIRED")
+    if configured is not None:
+        return configured.lower() == "true"
+    # Hosting must fail closed when a deployment variable is accidentally omitted.
+    return bool(os.environ.get("VERCEL"))
 
 
 async def current_user(
@@ -61,6 +65,18 @@ def sign_audit_event(event: dict) -> dict:
     canonical = json.dumps(event, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     signature = hmac.new(secret.encode(), canonical.encode(), hashlib.sha256).hexdigest()
     return {**event, "signature": signature, "signature_algorithm": "HMAC-SHA256"}
+
+
+def verify_audit_event(event: dict) -> dict:
+    if not isinstance(event, dict) or len(json.dumps(event, ensure_ascii=False)) > 8_192:
+        raise HTTPException(400, "The signed event is missing or too large.")
+    if event.get("signature_algorithm") != "HMAC-SHA256" or not isinstance(event.get("signature"), str):
+        raise HTTPException(400, "The signed event format is invalid.")
+    unsigned = {key: value for key, value in event.items() if key not in {"signature", "signature_algorithm"}}
+    expected = sign_audit_event(unsigned)["signature"]
+    if not hmac.compare_digest(event["signature"], expected):
+        raise HTTPException(400, "The signed event could not be verified.")
+    return event
 
 
 def new_audit_event(action: str, actor: UserContext, analysis_id: str, details: dict | None = None) -> dict:

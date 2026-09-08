@@ -66,7 +66,7 @@ export interface Analysis {
     retention: "request_only";
     server_storage: false;
     cache_control: "no-store";
-    declared: Record<string, string>;
+    declared: Record<string, string | boolean>;
   };
   audit_event: AuditEvent;
   provenance: {

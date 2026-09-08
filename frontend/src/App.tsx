@@ -59,7 +59,7 @@ export default function App() {
     owner: "",
     source_url: "",
     verified_at: "",
-    classification: "internal",
+    classification: "",
     purpose: "",
   });
   const [authorized, setAuthorized] = useState(false);
@@ -68,8 +68,14 @@ export default function App() {
   >({});
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const input = useRef<HTMLInputElement>(null);
+  const uploadTrigger = useRef<HTMLButtonElement>(null);
   const governanceReady = Boolean(
-    authorized && governance.owner.trim() && governance.purpose.trim(),
+    authorized &&
+      governance.owner.trim() &&
+      governance.purpose.trim() &&
+      governance.classification &&
+      (governance.classification !== "public" ||
+        (governance.source_url.startsWith("https://") && governance.verified_at)),
   );
   async function upload(
     file: File,
@@ -81,6 +87,10 @@ export default function App() {
     },
   ) {
     if (busy) return;
+    if (!authorized) {
+      setError("Confirm that you are allowed to upload this file before analysis.");
+      return;
+    }
     if (
       !file.name.toLowerCase().endsWith(".csv") ||
       file.size > MAX_UPLOAD_MB * 1024 * 1024
@@ -97,7 +107,7 @@ export default function App() {
         "schema",
         JSON.stringify({
           ...schema,
-          governance,
+          governance: { ...governance, authorized_to_process: authorized },
           business_rules: schema?.business_rules ?? businessRules,
         }),
       );
@@ -163,6 +173,11 @@ export default function App() {
         },
         body: JSON.stringify({
           analysis_id: data.governance.analysis_id,
+          analysis_event: data.audit_event,
+          review_event:
+            action === "approve"
+              ? [...auditEvents].reverse().find((event) => event.action === "analysis.reviewed")
+              : undefined,
           note,
         }),
       });
@@ -192,7 +207,7 @@ export default function App() {
       owner: "",
       source_url: "",
       verified_at: "",
-      classification: "internal",
+      classification: "",
       purpose: "",
     });
     setAuthorized(false);
@@ -200,15 +215,19 @@ export default function App() {
     setPage(0);
     setError("");
     if (input.current) input.current.value = "";
+    window.setTimeout(() => uploadTrigger.current?.focus(), 0);
   }
   const column = data?.columns.find((c) => c.name === selected);
+  const approved = Boolean(
+    data && auditEvents.some((event) => event.action === "analysis.approved" && event.analysis_id === data.governance.analysis_id),
+  );
   return (
     <div className={dark ? "app dark" : "app"}>
       <aside>
         <a className="brand" href="#">
           <Aperture size={30} />
           <span>
-            DataLens<span className="version"> / 0.6.1</span>
+            DataLens<span className="version"> / 0.7.0</span>
           </span>
         </a>
         <a
@@ -233,7 +252,7 @@ export default function App() {
         <div className="side-bottom">
           A clearer view of your data.
           <br />
-          <span>Simple analysis · v0.6.1</span>
+          <span>Simple analysis · v0.7.0</span>
         </div>
       </aside>
       <main>
@@ -271,8 +290,9 @@ export default function App() {
               </p>
             </div>
             <button
+              ref={uploadTrigger}
               className="primary"
-              disabled={busy}
+              disabled={busy || !authorized}
               onClick={() => input.current?.click()}
             >
               <Upload size={17} />
@@ -320,9 +340,22 @@ export default function App() {
               </div>
               <h2>Your next discovery starts here</h2>
               <p>Drop a CSV file here to explore its quality and structure.</p>
+              <p>
+                Current release: use synthetic or confirmed non-personal data only.
+                CSV bytes are sent to the analysis service and may be handled transiently
+                by the hosting framework. DataLens does not intentionally persist the file.
+              </p>
+              <label className="authorization upload-authorization">
+                <input
+                  type="checkbox"
+                  checked={authorized}
+                  onChange={(event) => setAuthorized(event.target.checked)}
+                />
+                I am allowed to analyze this file, and it contains no personal or sensitive data.
+              </label>
               <button
                 className="primary"
-                disabled={busy}
+                disabled={busy || !authorized}
                 onClick={() => input.current?.click()}
               >
                 {busy ? "Analyzing…" : "Choose a CSV file"}
@@ -353,7 +386,7 @@ export default function App() {
                     className="report-button"
                     onClick={() => downloadExecutiveReport(data, auditEvents)}
                   >
-                    <Download size={15} /> Export executive brief
+                    <Download size={15} /> {approved ? "Export approved brief" : "Export draft profile"}
                   </button>
                   <span className="analyzed">
                     <Check size={14} /> Analysis complete
@@ -387,24 +420,28 @@ export default function App() {
               {tab === "Overview" && (
                 <>
                   <ExecutiveBrief data={data} />
-                  {data.header.generated_names && (
+                  {data.header.mode === "auto" && (
                     <section className="header-notice" role="status">
                       <CircleAlert size={20} />
                       <div>
-                        <strong>No header row detected</strong>
+                        <strong>Confirm how row 1 was read</strong>
                         <p>
-                          All {fmt(data.rows)} rows were kept as data. Neutral
-                          names were generated so the quality score does not
-                          hide a structural issue.
+                          {data.header.used
+                            ? `We treated row 1 as column names: ${data.columns.slice(0, 3).map((item) => item.name).join(", ")}.`
+                            : `We kept row 1 as data and generated neutral column names.`}
                         </p>
                       </div>
                       <button
                         disabled={busy || !lastFile}
-                        onClick={() =>
-                          lastFile && void upload(lastFile, "present")
-                        }
+                        onClick={() => lastFile && void upload(lastFile, data.header.used ? "present" : "absent")}
                       >
-                        Use first row as header
+                        This is correct
+                      </button>
+                      <button
+                        disabled={busy || !lastFile}
+                        onClick={() => lastFile && void upload(lastFile, data.header.used ? "absent" : "present")}
+                      >
+                        {data.header.used ? "Row 1 is data" : "Row 1 is headers"}
                       </button>
                     </section>
                   )}
@@ -531,10 +568,14 @@ export default function App() {
                     auditEvents={auditEvents}
                     busy={busy}
                     canApprove={
-                      ["admin", "approver", "developer"].includes(role) &&
+                      ["admin", "approver"].includes(role) &&
                       data.executive.status === "Ready for exploration" &&
                       data.business_rules.configured &&
-                      data.business_rules.passed
+                      data.business_rules.passed &&
+                      data.header.mode !== "auto" &&
+                      governanceReady &&
+                      Boolean(data.governance.declared.owner) &&
+                      auditEvents.some((event) => event.action === "analysis.reviewed")
                     }
                     onRule={(name, rule) =>
                       setBusinessRules((rules) => ({ ...rules, [name]: rule }))
@@ -570,8 +611,8 @@ export default function App() {
                   <section className="panel">
                     <h2>Column health</h2>
                     <p className="muted">
-                      Types inferred at an 80% threshold. Empty cells are
-                      excluded from type checks.
+                      A type is inferred only when it has a clear majority.
+                      Empty cells are excluded from type checks.
                     </p>
                     <div className="table-scroll">
                       <table>

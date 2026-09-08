@@ -2,9 +2,9 @@
 
 **Production:** https://datalens-kappa-one.vercel.app · **GitHub:** https://github.com/Piecez2548/DataLens · **Nexus:** https://nexus-lemon-eight-32.vercel.app/projects
 
-DataLens is a governed CSV profiling workspace for evidence-led decisions. It uses the same Supabase account as Nexus, calculates every metric deterministically from the uploaded bytes, and does not call an AI API. The service does not persist CSV contents.
+DataLens is a CSV structural-profiling workspace for reviewable decisions. It uses the same Supabase account as Nexus, calculates every metric deterministically from the uploaded bytes, and does not call an AI API. The application does not intentionally persist CSV contents; transient processing by the web framework and hosting platform can occur.
 
-## v0.6.1
+## v0.7.0
 
 - Supabase authentication with allowlisted roles and a shared Nexus account.
 - One-step CSV upload with source details, business rules, and approval available after analysis.
@@ -14,10 +14,13 @@ DataLens is a governed CSV profiling workspace for evidence-led decisions. It us
 - Per-column required, allowed-value, minimum, and maximum business rules.
 - Executive readiness summary and a print-ready HTML brief.
 - SHA-256 source fingerprint, deterministic method version, and no-generated-values declaration.
-- HMAC-SHA256 signed analysis, review, and approval events embedded in the exported brief.
+- HMAC-SHA256 signed analysis, review, and approval event chain. The server rejects fabricated analysis IDs and approval without matching evidence, review, declarations, confirmed headers, and passing rules.
+- Draft structural profiles remain clearly marked until the exact analysis has a valid approval event.
+- Conservative header detection and regression coverage for mixed types, sequential numeric measures, alternate delimiters, missing-cell severity, and rule validation.
+- Accessible chart-value tables, visible keyboard focus, 44px controls, improved contrast, and deferred chart loading.
 - Browser E2E coverage, dependency audits, scheduled production smoke checks, and security headers.
 
-DataLens proves that its displayed values came from a specific uploaded file. It cannot prove that the source file is factually correct. The data owner must verify source authority and business meaning before approval.
+The source SHA-256 identifies the uploaded bytes. DataLens cannot prove that a source file is factually correct, complete for its business purpose, lawful to process, or free from manipulation before upload. The accountable data owner must verify those facts. Release 0.7.0 is limited to synthetic or confirmed non-personal data until the operator completes the privacy and vendor controls in the readiness report.
 
 ## Quick start
 
@@ -59,7 +62,7 @@ FastAPI on Vercel
   └─ signed metadata-only audit event
                  │
 Browser state + exported HTML brief
-CSV bytes are released after the request; no application database stores them.
+CSV bytes are released after the request; no application database stores them. Framework or hosting infrastructure may use transient memory or temporary storage while handling the request.
 ```
 
 Key files:
@@ -92,8 +95,8 @@ Business rules are separate from structural quality. A dataset can have a high q
 - Production analysis endpoints require a valid Supabase bearer token and an allowed role.
 - HTTPS is enforced by Vercel; HSTS, CSP, frame blocking, referrer, permissions, and MIME-sniffing headers are configured.
 - Uploads are limited to 4 MiB in production, 100,000 rows, and 100 columns.
-- Responses use `Cache-Control: no-store`; CSV contents remain in request/browser memory and are not written by the application.
-- Audit events contain metadata, are HMAC signed, and travel with the downloadable report. The service intentionally has no central audit database, so exported reports are the durable records.
+- Responses use `Cache-Control: no-store`; CSV contents are not intentionally persisted by application code. Platform-level transient handling must be confirmed with the hosting provider before confidential use.
+- Audit events contain metadata and are HMAC signed. Review and approval endpoints verify a chain back to the exact completed analysis. The downloaded HTML can still be edited and there is no central audit database, key-rotation record, or independently verifiable ledger.
 - `public`, `internal`, and `confidential` classifications are accepted. Restricted/regulatory data needs a separately approved storage, key management, DLP, and retention design.
 
 See [data governance](docs/DATA_GOVERNANCE.md), [threat model](docs/THREAT_MODEL.md), [security review](docs/SECURITY.md), and [operations](docs/OPERATIONS.md).
@@ -125,6 +128,7 @@ CI also runs `npm audit --audit-level=high`, `pip-audit`, and the browser workfl
 
 ## Roadmap
 
+- Operator privacy notice, ROPA, DPA/subprocessor review, transfer assessment, DSAR and incident workflows, followed by Thai counsel/DPO sign-off before personal-data use.
 - Durable organization audit storage with customer-managed retention and verification keys.
 - SAML/OIDC enterprise SSO, SCIM, and group-to-role mapping.
 - Approved encrypted object storage for files larger than 4 MiB.

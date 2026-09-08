@@ -1,14 +1,12 @@
 # Data governance
 
-Users can profile a file immediately. Before sharing an executive report, they can record the accountable owner, classification, official HTTPS source, date last verified, decision purpose, and authorization. These are declarations by the user; DataLens preserves them as evidence but cannot independently certify them.
+Users must attest that they are authorized and that the file is synthetic or confirmed non-personal before upload. Before final approval, they must record the accountable owner, classification, official HTTPS source where required, date checked by the owner, decision purpose, and authorization. These are declarations by the user; DataLens records them in signed event evidence but cannot independently certify them.
 
 | Classification | Current policy |
 | --- | --- |
-| Public | Allowed with authorization and a cited source. |
-| Internal | Allowed for authenticated, authorized Nexus users. |
-| Confidential | Allowed only when the owner accepts request-only processing and the 4 MiB limit. |
-| Restricted or regulated | Out of scope until an organization approves storage, DLP, key management, residency, deletion, and retention controls. |
+| Synthetic or confirmed non-personal | Allowed for authenticated, authorized Nexus users. |
+| Personal, confidential, restricted, sensitive, or regulated | Out of scope until the privacy, contract, security, residency, deletion, retention, and legal gates in the readiness report are approved. |
 
-CSV contents are read into bounded process memory, analyzed, returned, and released at request completion. The application does not create a dataset record or object. The browser keeps results only in React state. Closing/reloading the page or signing out removes that state. Vercel/framework infrastructure may process request bytes according to the hosting provider's platform controls.
+CSV contents are read through the framework, analyzed, returned, and released at request completion. The application does not create a dataset record or object. The browser keeps results only in React state. Closing/reloading the page or signing out removes that state. Framework/hosting infrastructure can use transient memory or temporary storage; provider behavior must be verified before the policy is expanded.
 
 The SHA-256 digest identifies the exact uploaded byte sequence. An executive report should be archived by the accountable organization together with the original file under its own records policy.

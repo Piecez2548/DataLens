@@ -5,11 +5,11 @@ Automated checks run on every push and pull request through GitHub Actions.
 ## Manual acceptance
 
 - Open Nexus, choose DataLens from the project hub, and sign in with the same Supabase-backed Nexus identity.
-- Confirm a user can upload immediately, then optionally add owner/source details for an executive report.
+- Confirm upload is disabled until the non-personal-data authorization attestation is checked.
 - Confirm production offers only file upload and does not preload or offer fictional business data.
 - For developer regression only, upload `samples/demo.csv`: expect 164 rows, 6 columns, 5 missing cells, 4 duplicates and 99.20 overall score. Never cite these fictional values as business evidence.
 - Confirm the Executive brief reports the risks, impact, and recommended next action before the detail metrics.
-- Export the executive brief, open the HTML file, and use Print / Save PDF; confirm dataset metadata, scores, findings, signals, and decision limits are present.
+- Export before approval and confirm the HTML is visibly marked Draft. After a bound review and approval, confirm the approved label, metadata, scores, findings, signals, full event signatures, and decision limits are present.
 - Confirm the page and exported report show the same SHA-256 fingerprint, input size, analyzed rows, method version, and source classification.
 - Configure a required/domain/range policy, reanalyze, and compare every violation count to an independent row filter.
 - Mark a passing analysis reviewed; verify the exported brief contains the server-signed event. Confirm only an approver/admin role can approve it.

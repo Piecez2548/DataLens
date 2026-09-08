@@ -8,6 +8,8 @@ test("analyzes a real CSV with governance, rules, and signed review", async ({
   await expect(page.getByRole("heading", { name: /Good insights/ })).toBeVisible();
 
   const choose = page.getByRole("button", { name: "Choose a CSV file" });
+  await expect(choose).toBeDisabled();
+  await page.getByLabel(/I am allowed to analyze this file/).check();
   await expect(choose).toBeEnabled();
   await page
     .getByLabel("Upload CSV file")
@@ -18,8 +20,9 @@ test("analyzes a real CSV with governance, rules, and signed review", async ({
 
   await page.getByText("Prepare an executive report").click();
   await page.getByLabel(/Data owner/).fill("Data Operations");
+  await page.getByLabel(/Data classification/).selectOption("internal");
   await page.getByLabel(/Report purpose/).fill("Release verification");
-  await page.getByLabel(/I am allowed to use this file/).check();
+  await expect(page.getByLabel(/I am allowed to use this non-personal file/)).toBeChecked();
   await page.getByRole("button", { name: "Add report details" }).click();
   await expect(page.getByText("Details added")).toBeVisible();
 
@@ -35,5 +38,5 @@ test("analyzes a real CSV with governance, rules, and signed review", async ({
 
   await page.getByRole("button", { name: "Clear dataset" }).click();
   await expect(page.getByRole("heading", { name: /next discovery/ })).toBeVisible();
-  await expect(choose).toBeEnabled();
+  await expect(choose).toBeDisabled();
 });

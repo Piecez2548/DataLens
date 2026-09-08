@@ -17,12 +17,7 @@ EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
 
 def _detect_header(text: str) -> bool:
-    """Use Python's conservative structural heuristic on a bounded sample."""
-    try:
-        if csv.Sniffer().has_header(text[:8192]):
-            return True
-    except csv.Error:
-        pass
+    """Treat row one as a header only when its contents provide clear evidence."""
     rows = csv.reader(io.StringIO(text))
     first = next(rows, [])
     second = next(rows, [])
@@ -49,12 +44,16 @@ def _detect_header(text: str) -> bool:
     }
     normalized = [cell.strip().lower().replace(" ", "_") for cell in first]
     label_shaped = all(re.fullmatch(r"[a-z_][a-z0-9_-]*", cell) for cell in normalized)
+    visibly_header_shaped = label_shaped and all(cell.strip() == cell.strip().lower() for cell in first)
     data_shaped_second_row = any(
         re.fullmatch(r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?", cell.strip())
         or re.fullmatch(r"\d{4}-\d{2}-\d{2}", cell.strip())
         for cell in second
     )
-    return bool(label_shaped and (any(cell in common_labels for cell in normalized) or data_shaped_second_row))
+    return bool(
+        any(cell in common_labels for cell in normalized)
+        or (visibly_header_shaped and (data_shaped_second_row or not second or all(not cell.strip() for cell in second)))
+    )
 
 
 def _executive_summary(
@@ -63,6 +62,7 @@ def _executive_summary(
     missing: int,
     duplicates: int,
     rows: int,
+    columns: int,
     mismatches: int,
     invalid: int,
     header_detected: bool,
@@ -82,7 +82,7 @@ def _executive_summary(
             }
         )
     if missing:
-        ratio = missing / max(1, rows)
+        ratio = missing / max(1, rows * columns)
         issues.append(
             {
                 "severity": "high" if ratio >= 0.05 else "medium",
@@ -153,13 +153,15 @@ def _executive_summary(
         status, message = "Review needed", "The dataset is usable for exploration after the listed checks."
     else:
         status, message = "Ready for exploration", "No structural issues were found by the supported checks."
+    severity_order = {"high": 0, "medium": 1, "info": 2}
+    issues.sort(key=lambda issue: severity_order[issue["severity"]])
     return {
         "status": status,
         "message": message,
         "quality_score": round(scores["Overall"], 2),
         "issue_count": len(issues),
         "high_priority_count": high,
-        "issues": issues[:6],
+        "issues": issues,
         "signals": [
             f"Observed Pearson coefficient in this file: {pair['left']} ↔ {pair['right']} ({pair['coefficient']:+.2f})."
             for pair in correlations[:1]
@@ -184,11 +186,14 @@ def analyze(
         raise ValueError("Use a UTF-8 encoded CSV file.") from exc
     if "\x00" in text:
         raise ValueError("The file contains binary data.")
+    first_physical_line = text.splitlines()[0] if text.splitlines() else ""
+    if "," not in first_physical_line and (";" in first_physical_line or "\t" in first_physical_line):
+        raise ValueError("This file appears to use a semicolon or tab delimiter. Export it as comma-separated CSV.")
     if header_mode not in {"auto", "present", "absent"}:
         raise ValueError("header_mode must be auto, present, or absent.")
     try:
         reader = csv.reader(io.StringIO(text), strict=True)
-        all_rows = [row for row in reader if row]
+        all_rows = list(reader)
         if not all_rows:
             raise ValueError("The CSV is empty or malformed.")
         width = len(all_rows[0])
@@ -251,19 +256,12 @@ def analyze(
         kinds = values.map(kind)
         counts = Counter(kinds)
         dominant = counts.most_common(1)[0][0] if counts else "empty"
-        inferred = dominant if counts and counts[dominant] / len(values) >= 0.8 else "categorical"
+        inferred = dominant if counts and counts[dominant] / len(values) > 0.5 else "categorical"
         normalized_name = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
         email_hits = int(values.map(lambda value: bool(EMAIL_PATTERN.fullmatch(value))).sum())
         if values.size and ("email" in normalized_name or email_hits / len(values) >= 0.8):
             inferred = "email"
-        numeric_values = pd.to_numeric(values, errors="coerce")
-        sequential_identifier = (
-            len(values) >= 3
-            and numeric_values.notna().all()
-            and values.nunique() == len(values)
-            and np.allclose(np.diff(numeric_values.astype(float)), 1)
-        )
-        if normalized_name in {"id", "customer_id", "record_id", "user_id"} or sequential_identifier:
+        if normalized_name in {"id", "customer_id", "record_id", "user_id"} or normalized_name.endswith("_id"):
             inferred = "identifier"
         dtype = type_overrides.get(name, inferred)
         if dtype == "email":
@@ -385,6 +383,18 @@ def analyze(
                 }
             )
         numeric_values = pd.to_numeric(nonempty, errors="coerce").replace([np.inf, -np.inf], np.nan).dropna()
+        if "min" in rule and "max" in rule:
+            minimum, maximum = rule["min"], rule["max"]
+            if (
+                isinstance(minimum, bool)
+                or isinstance(maximum, bool)
+                or not isinstance(minimum, (int, float))
+                or not isinstance(maximum, (int, float))
+                or not np.isfinite(minimum)
+                or not np.isfinite(maximum)
+                or minimum > maximum
+            ):
+                raise ValueError("Business rule minimum must be a finite number no greater than maximum.")
         for key, operator in (("min", "below_min"), ("max", "above_max")):
             if key not in rule:
                 continue
@@ -392,7 +402,7 @@ def analyze(
             if column_type != "numeric":
                 raise ValueError(f"{key} business rules require a numeric column.")
             threshold = rule[key]
-            if not isinstance(threshold, (int, float)) or not np.isfinite(threshold):
+            if isinstance(threshold, bool) or not isinstance(threshold, (int, float)) or not np.isfinite(threshold):
                 raise ValueError(f"{key} business rules must be finite numbers.")
             violations = (numeric_values < threshold).sum() if key == "min" else (numeric_values > threshold).sum()
             rule_results.append(
@@ -404,6 +414,7 @@ def analyze(
         missing=missing,
         duplicates=duplicates,
         rows=n,
+        columns=len(headers),
         mismatches=mismatches,
         invalid=invalid,
         header_detected=use_header or column_names is not None,
@@ -441,7 +452,7 @@ def analyze(
         "scatter_axes": scatter_axes,
         "correlations": correlations[:10],
         "business_rules": {
-            "configured": bool(business_rules),
+            "configured": bool(rule_results),
             "passed": business_rule_violations == 0,
             "total_violations": business_rule_violations,
             "results": rule_results,
@@ -453,7 +464,7 @@ def analyze(
             "file_rows": len(all_rows),
             "analyzed_rows": n,
             "preview_rows": min(n, 100),
-            "method_version": "0.6.1",
+            "method_version": "0.7.0",
             "calculation_mode": "deterministic",
             "data_values_generated": False,
         },

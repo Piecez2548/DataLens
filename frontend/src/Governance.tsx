@@ -4,7 +4,7 @@ export type GovernanceInput = {
   owner: string;
   source_url: string;
   verified_at: string;
-  classification: "public" | "internal" | "confidential";
+  classification: "" | "public" | "internal" | "confidential";
   purpose: string;
 };
 
@@ -61,6 +61,7 @@ export function UploadPolicy({
                 })
               }
             >
+              <option value="">Choose a classification</option>
               <option value="public">Public</option>
               <option value="internal">Internal</option>
               <option value="confidential">Confidential</option>
@@ -105,7 +106,7 @@ export function UploadPolicy({
             checked={authorized}
             onChange={(event) => onAuthorized(event.target.checked)}
           />
-          I am allowed to use this file for the stated purpose.
+          I am allowed to use this non-personal file for the stated purpose.
         </label>
         <div className="advanced-actions">
           <p>
@@ -291,6 +292,12 @@ function AuditControls({
         <p>
           {events.length} event(s) · latest: {latest?.action ?? "none"}
         </p>
+        {!canApprove && (
+          <p role="status">
+            Final approval needs a confirmed header, saved owner and purpose,
+            passing business rules, a completed review, and an approver role.
+          </p>
+        )}
       </div>
       <button
         onClick={() =>
