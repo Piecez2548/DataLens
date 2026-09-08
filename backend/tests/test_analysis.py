@@ -144,7 +144,7 @@ def test_provenance_fingerprints_the_exact_input_without_generating_values():
         "file_rows": 3,
         "analyzed_rows": 2,
         "preview_rows": 2,
-        "method_version": "0.7.0",
+        "method_version": "0.7.1",
         "calculation_mode": "deterministic",
         "data_values_generated": False,
     }

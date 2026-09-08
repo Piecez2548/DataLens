@@ -40,3 +40,26 @@ test("analyzes a real CSV with governance, rules, and signed review", async ({
   await expect(page.getByRole("heading", { name: /next discovery/ })).toBeVisible();
   await expect(choose).toBeDisabled();
 });
+
+test("supports a mobile browser workflow without page overflow", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+
+  await expect(page.getByRole("link", { name: /Nexus/ })).toBeVisible();
+  const choose = page.getByRole("button", { name: "Choose a CSV file" });
+  await expect(choose).toBeDisabled();
+  await page.getByLabel(/I am allowed to analyze this file/).check();
+  await page.getByLabel("Upload CSV file").setInputFiles(path.resolve("../samples/demo.csv"));
+  await expect(page.getByText("164 rows · 6 columns")).toBeVisible();
+
+  const layout = await page.evaluate(() => ({
+    viewport: window.innerWidth,
+    documentWidth: document.documentElement.scrollWidth,
+    minButtonHeight: Math.min(
+      ...Array.from(document.querySelectorAll("button")).map((button) => button.getBoundingClientRect().height),
+    ),
+  }));
+  expect(layout.documentWidth).toBeLessThanOrEqual(layout.viewport);
+  expect(layout.minButtonHeight).toBeGreaterThanOrEqual(44);
+
+});

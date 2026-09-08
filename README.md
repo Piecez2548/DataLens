@@ -4,7 +4,7 @@
 
 DataLens is a CSV structural-profiling workspace for reviewable decisions. It uses the same Supabase account as Nexus, calculates every metric deterministically from the uploaded bytes, and does not call an AI API. The application does not intentionally persist CSV contents; transient processing by the web framework and hosting platform can occur.
 
-## v0.7.0
+## v0.7.1
 
 - Supabase authentication with allowlisted roles and a shared Nexus account.
 - One-step CSV upload with source details, business rules, and approval available after analysis.
@@ -18,9 +18,10 @@ DataLens is a CSV structural-profiling workspace for reviewable decisions. It us
 - Draft structural profiles remain clearly marked until the exact analysis has a valid approval event.
 - Conservative header detection and regression coverage for mixed types, sequential numeric measures, alternate delimiters, missing-cell severity, and rule validation.
 - Accessible chart-value tables, visible keyboard focus, 44px controls, improved contrast, and deferred chart loading.
+- Responsive mobile web layout with safe-area spacing, mobile Nexus navigation, touch-friendly controls, horizontally scrollable tabs and tables, and compact report actions.
 - Browser E2E coverage, dependency audits, scheduled production smoke checks, and security headers.
 
-The source SHA-256 identifies the uploaded bytes. DataLens cannot prove that a source file is factually correct, complete for its business purpose, lawful to process, or free from manipulation before upload. The accountable data owner must verify those facts. Release 0.7.0 is limited to synthetic or confirmed non-personal data until the operator completes the privacy and vendor controls in the readiness report.
+The source SHA-256 identifies the uploaded bytes. DataLens cannot prove that a source file is factually correct, complete for its business purpose, lawful to process, or free from manipulation before upload. The accountable data owner must verify those facts. Release 0.7.1 is limited to synthetic or confirmed non-personal data until the operator completes the privacy and vendor controls in the readiness report.
 
 ## Quick start
 

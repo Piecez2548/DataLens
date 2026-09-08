@@ -399,6 +399,9 @@ header {
   font-size: 13px;
   color: var(--muted);
 }
+.mobile-nexus {
+  display: none;
+}
 .breadcrumb span {
   margin: 0 14px;
   opacity: 0.5;
@@ -847,6 +850,17 @@ footer span:first-child {
   header {
     padding: 0 22px;
     height: 60px;
+    gap: 14px;
+  }
+  .mobile-nexus {
+    display: inline-flex;
+    color: var(--accent-text);
+    font-size: 13px;
+    font-weight: 700;
+    text-decoration: none;
+  }
+  .breadcrumb {
+    margin-right: auto;
   }
   .content {
     padding: 25px 20px;
@@ -886,6 +900,14 @@ footer span:first-child {
     margin-left: 0;
     justify-content: space-between;
   }
+  .tabs {
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scrollbar-width: thin;
+  }
+  .tabs button {
+    flex: 0 0 auto;
+  }
   .provenance-strip {
     grid-template-columns: 1fr;
   }
@@ -894,11 +916,45 @@ footer span:first-child {
   }
 }
 @media (max-width: 480px) {
+  header {
+    padding: env(safe-area-inset-top) 14px 0;
+    min-height: calc(60px + env(safe-area-inset-top));
+  }
+  .breadcrumb {
+    display: none;
+  }
+  .content {
+    padding: 21px 14px calc(20px + env(safe-area-inset-bottom));
+  }
   .page-heading {
     display: block;
   }
   .page-heading .primary {
     margin-top: 16px;
+    width: 100%;
+  }
+  .upload-area {
+    padding: 38px 14px 24px;
+  }
+  .upload-area .primary {
+    width: 100%;
+  }
+  .upload-authorization {
+    align-items: flex-start;
+    text-align: left;
+  }
+  .metrics {
+    gap: 9px;
+  }
+  .file-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+  .file-actions button {
+    width: 100%;
+  }
+  .provenance-strip small {
+    overflow-wrap: anywhere;
   }
   .analyzed {
     display: none;
@@ -921,6 +977,15 @@ footer span:first-child {
   footer span:last-child {
     max-width: 180px;
     text-align: right;
+  }
+  footer {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+  footer span:last-child {
+    max-width: none;
+    text-align: left;
   }
 }
 
@@ -1039,4 +1104,10 @@ footer span:first-child {
   .audit-controls { align-items: stretch; flex-direction: column; }
   .audit-controls > div { margin-right: 0; }
   .user-chip { display: none; }
+  .rule-row { grid-template-columns: 1fr; }
+  .rule-row .wide { grid-column: auto; }
+  .auth-shell { padding: 14px; }
+  .auth-card { padding: 28px 20px; }
+  .auth-card h1 { font-size: 24px; }
+  .auth-card input, .governance-fields input, .governance-fields select, .rule-row input { font-size: 16px; }
 }

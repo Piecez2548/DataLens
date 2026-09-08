@@ -43,6 +43,7 @@ const explanations: Record<string, string> = {
 };
 const fmt = (n: number) =>
   n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+
 export default function App() {
   const { session, user, role, signOut } = useAuth();
   const [data, setData] = useState<Analysis | null>(null);
@@ -227,7 +228,7 @@ export default function App() {
         <a className="brand" href="#">
           <Aperture size={30} />
           <span>
-            DataLens<span className="version"> / 0.7.0</span>
+            DataLens<span className="version"> / 0.7.1</span>
           </span>
         </a>
         <a
@@ -252,11 +253,14 @@ export default function App() {
         <div className="side-bottom">
           A clearer view of your data.
           <br />
-          <span>Simple analysis · v0.7.0</span>
+          <span>Simple analysis · v0.7.1</span>
         </div>
       </aside>
       <main>
         <header>
+          <a className="mobile-nexus" href="https://nexus-lemon-eight-32.vercel.app/projects">
+            ← Nexus
+          </a>
           <div className="breadcrumb">
             Workspace <span>/</span> Dataset explorer
           </div>

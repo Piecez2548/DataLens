@@ -20,7 +20,7 @@ class AuditRequest(BaseModel):
     review_event: dict | None = None
     note: str = Field(default="", max_length=500)
 
-app = FastAPI(title="DataLens API", version="0.7.0")
+app = FastAPI(title="DataLens API", version="0.7.1")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[

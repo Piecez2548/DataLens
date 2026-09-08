@@ -464,7 +464,7 @@ def analyze(
             "file_rows": len(all_rows),
             "analyzed_rows": n,
             "preview_rows": min(n, 100),
-            "method_version": "0.7.0",
+            "method_version": "0.7.1",
             "calculation_mode": "deterministic",
             "data_values_generated": False,
         },
