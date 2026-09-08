@@ -4,12 +4,16 @@ Automated checks run on every push and pull request through GitHub Actions.
 
 ## Manual acceptance
 
-- Open Nexus, sign in, and choose DataLens from the project hub.
+- Open Nexus, choose DataLens from the project hub, and sign in with the same Supabase-backed Nexus identity.
+- Confirm upload stays disabled until an owner, purpose, and authorization declaration are present.
 - Confirm production offers only file upload and does not preload or offer fictional business data.
 - For developer regression only, upload `samples/demo.csv`: expect 164 rows, 6 columns, 5 missing cells, 4 duplicates and 99.20 overall score. Never cite these fictional values as business evidence.
 - Confirm the Executive brief reports the risks, impact, and recommended next action before the detail metrics.
 - Export the executive brief, open the HTML file, and use Print / Save PDF; confirm dataset metadata, scores, findings, signals, and decision limits are present.
 - Confirm the page and exported report show the same SHA-256 fingerprint, input size, analyzed rows, method version, and source classification.
+- Configure a required/domain/range policy, reanalyze, and compare every violation count to an independent row filter.
+- Mark a passing analysis reviewed; verify the exported brief contains the server-signed event. Confirm only an approver/admin role can approve it.
+- Choose **Clear dataset** and verify preview, metrics, rules, audit events, declaration, and the in-memory file reference disappear.
 - Upload a headerless CSV: expect every row to remain, generated `column_1…n` names, and `Review needed` even when the quality score is 100.
 - Give generated columns unique names, override an ID and email type, choose **Apply schema**, and confirm all source rows remain.
 - Use **Use first row as header** and confirm the dataset is reanalyzed with one fewer data row.
@@ -25,4 +29,4 @@ Automated checks run on every push and pull request through GitHub Actions.
 - Toggle dark/light mode and repeat at mobile width.
 - Choose Back to Nexus; verify the hub opens without transferring CSV contents or credentials.
 
-DataLens uses a separate origin. Nexus authentication is not shared with it; no single sign-on or personal data synchronization is implemented.
+DataLens uses a separate origin and browser session while validating users against the same Supabase identity project as Nexus. CSV contents and analysis state are not transferred to Nexus.

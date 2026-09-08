@@ -144,7 +144,7 @@ def test_provenance_fingerprints_the_exact_input_without_generating_values():
         "file_rows": 3,
         "analyzed_rows": 2,
         "preview_rows": 2,
-        "method_version": "0.5.2",
+        "method_version": "0.6.0",
         "calculation_mode": "deterministic",
         "data_values_generated": False,
     }
@@ -165,3 +165,94 @@ def test_iqr_flags_minority_values_when_middle_half_is_constant():
     assert result["columns"][0]["stats"]["q1"] == 180
     assert result["columns"][0]["stats"]["q3"] == 180
     assert result["columns"][0]["outliers"] == 1
+
+
+def test_business_rules_are_auditable_and_block_executive_readiness():
+    result = analyze(
+        b"region,amount\nTH,10\nUS,200\n,50\n",
+        "rules.csv",
+        business_rules={
+            "region": {"required": True, "allowed_values": ["TH"]},
+            "amount": {"min": 20, "max": 100},
+        },
+    )
+    assert result["business_rules"]["total_violations"] == 4
+    assert result["business_rules"]["passed"] is False
+    assert result["executive"]["status"] == "Action required"
+
+
+def test_api_requires_a_session_when_enterprise_auth_is_enabled(monkeypatch):
+    monkeypatch.setenv("DATALENS_AUTH_REQUIRED", "true")
+    client = TestClient(app)
+    response = client.post("/api/analyze", files={"file": ("demo.csv", b"x\n1\n")})
+    assert response.status_code == 401
+    assert response.headers["cache-control"] == "no-store, max-age=0"
+
+
+def test_review_and_approval_events_are_signed_in_local_development():
+    client = TestClient(app)
+    payload = {"analysis_id": "a" * 64, "note": "Evidence checked"}
+    reviewed = client.post("/api/audit/review", json=payload)
+    approved = client.post("/api/audit/approve", json=payload)
+    assert reviewed.status_code == 200
+    assert approved.status_code == 200
+    assert reviewed.json()["signature_algorithm"] == "HMAC-SHA256"
+    assert approved.json()["action"] == "analysis.approved"
+
+
+def test_valid_supabase_session_is_verified_and_actor_is_recorded(monkeypatch):
+    class Response:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return {
+                "id": "user-123",
+                "email": "analyst@example.com",
+                "app_metadata": {"role": "analyst"},
+            }
+
+    class Client:
+        def __init__(self, **_kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def get(self, *_args, **_kwargs):
+            return Response()
+
+    monkeypatch.setenv("DATALENS_AUTH_REQUIRED", "true")
+    monkeypatch.setenv("SUPABASE_URL", "https://project.supabase.co")
+    monkeypatch.setenv("SUPABASE_ANON_KEY", "public-key")
+    monkeypatch.setenv("DATALENS_ALLOWED_ROLES", "analyst")
+    monkeypatch.setenv("DATALENS_AUDIT_SECRET", "test-only-secret")
+    monkeypatch.setattr("app.security.httpx.AsyncClient", Client)
+    schema = {
+        "governance": {
+            "owner": "Finance",
+            "purpose": "Monthly review",
+            "classification": "internal",
+        }
+    }
+    response = TestClient(app).post(
+        "/api/analyze",
+        headers={"Authorization": "Bearer valid-token"},
+        files={"file": ("demo.csv", b"amount\n10\n")},
+        data={"schema": json.dumps(schema)},
+    )
+    assert response.status_code == 200
+    assert response.json()["governance"]["actor_id"] == "user-123"
+    assert response.json()["governance"]["actor_role"] == "analyst"
+
+
+def test_numeric_business_rule_rejects_a_text_column():
+    with pytest.raises(ValueError, match="require a numeric column"):
+        analyze(
+            b"region\nThailand\nJapan\n",
+            "regions.csv",
+            business_rules={"region": {"min": 0}},
+        )

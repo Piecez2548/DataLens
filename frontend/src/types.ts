@@ -46,6 +46,29 @@ export interface Analysis {
   scatter: { x: number; y: number }[];
   scatter_axes: string[];
   correlations: { left: string; right: string; coefficient: number }[];
+  business_rules: {
+    configured: boolean;
+    passed: boolean;
+    total_violations: number;
+    results: {
+      column: string;
+      rule: string;
+      threshold?: number;
+      checked: number;
+      violations: number;
+    }[];
+  };
+  governance: {
+    analysis_id: string;
+    actor_id: string;
+    actor_email: string | null;
+    actor_role: string;
+    retention: "request_only";
+    server_storage: false;
+    cache_control: "no-store";
+    declared: Record<string, string>;
+  };
+  audit_event: AuditEvent;
   provenance: {
     source: "uploaded_file";
     sha256: string;
@@ -57,4 +80,24 @@ export interface Analysis {
     calculation_mode: "deterministic";
     data_values_generated: false;
   };
+}
+
+export interface AuditEvent {
+  event_version: number;
+  action: string;
+  actor_id: string;
+  actor_email: string | null;
+  actor_role: string;
+  analysis_id: string;
+  timestamp: number;
+  details: Record<string, unknown>;
+  signature: string;
+  signature_algorithm: "HMAC-SHA256";
+}
+
+export interface BusinessRule {
+  required?: boolean;
+  min?: number;
+  max?: number;
+  allowed_values?: string[];
 }

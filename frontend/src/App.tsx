@@ -8,12 +8,20 @@ import {
   Database,
   Download,
   FileSpreadsheet,
+  LogOut,
   Moon,
   Sun,
+  Trash2,
   Upload,
   X,
 } from "lucide-react";
-import type { Analysis } from "./types";
+import type { Analysis, AuditEvent, BusinessRule } from "./types";
+import { useAuth } from "./auth";
+import {
+  GovernancePanel,
+  UploadPolicy,
+  type GovernanceInput,
+} from "./Governance";
 import { downloadExecutiveReport } from "./report";
 const Charts = lazy(() => import("./Charts"));
 const MAX_UPLOAD_MB = import.meta.env.PROD ? 4 : 10;
@@ -36,6 +44,7 @@ const explanations: Record<string, string> = {
 const fmt = (n: number) =>
   n.toLocaleString(undefined, { maximumFractionDigits: 2 });
 export default function App() {
+  const { session, user, role, signOut } = useAuth();
   const [data, setData] = useState<Analysis | null>(null);
   const [tab, setTab] = useState<(typeof tabs)[number]>("Overview");
   const [selected, setSelected] = useState("");
@@ -46,13 +55,37 @@ export default function App() {
   const [lastFile, setLastFile] = useState<File | null>(null);
   const [columnNames, setColumnNames] = useState<string[]>([]);
   const [columnTypes, setColumnTypes] = useState<string[]>([]);
+  const [governance, setGovernance] = useState<GovernanceInput>({
+    owner: "",
+    source_url: "",
+    verified_at: "",
+    classification: "internal",
+    purpose: "",
+  });
+  const [authorized, setAuthorized] = useState(false);
+  const [businessRules, setBusinessRules] = useState<
+    Record<string, BusinessRule>
+  >({});
+  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const input = useRef<HTMLInputElement>(null);
   async function upload(
     file: File,
     headerMode: "auto" | "present" | "absent" = "auto",
-    schema?: { column_names: string[]; type_overrides: Record<string, string> },
+    schema?: {
+      column_names?: string[];
+      type_overrides?: Record<string, string>;
+      business_rules?: Record<string, BusinessRule>;
+    },
   ) {
     if (busy) return;
+    if (!authorized) {
+      setError("Confirm that you are authorized to process this file before upload.");
+      return;
+    }
+    if (!governance.owner.trim() || !governance.purpose.trim()) {
+      setError("Data owner and analysis purpose are required before upload.");
+      return;
+    }
     if (
       !file.name.toLowerCase().endsWith(".csv") ||
       file.size > MAX_UPLOAD_MB * 1024 * 1024
@@ -65,10 +98,18 @@ export default function App() {
     try {
       const body = new FormData();
       body.append("file", file);
-      if (schema) body.append("schema", JSON.stringify(schema));
+      body.append(
+        "schema",
+        JSON.stringify({
+          ...schema,
+          governance,
+          business_rules: schema?.business_rules ?? businessRules,
+        }),
+      );
       const response = await fetch(`/api/analyze?header_mode=${headerMode}`, {
         method: "POST",
         body,
+        headers: session ? { Authorization: `Bearer ${session.access_token}` } : undefined,
       });
       if (!response.ok) {
         const e = await response.json().catch(() => ({
@@ -85,6 +126,7 @@ export default function App() {
       }
       const result: Analysis = await response.json();
       setData(result);
+      setAuditEvents([result.audit_event]);
       setLastFile(file);
       setColumnNames(result.columns.map((item) => item.name));
       setColumnTypes(
@@ -111,6 +153,59 @@ export default function App() {
       if (input.current) input.current.value = "";
     }
   }
+  async function recordAudit(action: "review" | "approve", note: string) {
+    if (!data || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const response = await fetch(`/api/audit/${action}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(session
+            ? { Authorization: `Bearer ${session.access_token}` }
+            : {}),
+        },
+        body: JSON.stringify({
+          analysis_id: data.governance.analysis_id,
+          note,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.detail ?? "Could not record this audit event.");
+      }
+      setAuditEvents((events) => [...events, result as AuditEvent]);
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Could not record this audit event.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+  function clearDataset() {
+    setData(null);
+    setLastFile(null);
+    setColumnNames([]);
+    setColumnTypes([]);
+    setBusinessRules({});
+    setAuditEvents([]);
+    setGovernance({
+      owner: "",
+      source_url: "",
+      verified_at: "",
+      classification: "internal",
+      purpose: "",
+    });
+    setAuthorized(false);
+    setSelected("");
+    setPage(0);
+    setError("");
+    if (input.current) input.current.value = "";
+  }
   const column = data?.columns.find((c) => c.name === selected);
   return (
     <div className={dark ? "app dark" : "app"}>
@@ -118,7 +213,7 @@ export default function App() {
         <a className="brand" href="#">
           <Aperture size={30} />
           <span>
-            DataLens<span className="version"> / 0.5.2</span>
+            DataLens<span className="version"> / 0.6.0</span>
           </span>
         </a>
         <a
@@ -143,7 +238,7 @@ export default function App() {
         <div className="side-bottom">
           A clearer view of your data.
           <br />
-          <span>Executive preview · v0.5.2</span>
+          <span>Governed workspace · v0.6.0</span>
         </div>
       </aside>
       <main>
@@ -151,13 +246,22 @@ export default function App() {
           <div className="breadcrumb">
             Workspace <span>/</span> Dataset explorer
           </div>
-          <button
-            className="icon-button"
-            aria-label={dark ? "Use light theme" : "Use dark theme"}
-            onClick={() => setDark(!dark)}
-          >
-            {dark ? <Sun size={19} /> : <Moon size={19} />}
-          </button>
+          <div className="header-actions">
+            <div className="user-chip">
+              <strong>{user?.email}</strong>
+              <span>{role}</span>
+            </div>
+            <button
+              className="icon-button"
+              aria-label={dark ? "Use light theme" : "Use dark theme"}
+              onClick={() => setDark(!dark)}
+            >
+              {dark ? <Sun size={19} /> : <Moon size={19} />}
+            </button>
+            <button className="icon-button" aria-label="Sign out" onClick={() => void signOut()}>
+              <LogOut size={18} />
+            </button>
+          </div>
         </header>
         <div className="content">
           <div className="page-heading">
@@ -173,7 +277,7 @@ export default function App() {
             </div>
             <button
               className="primary"
-              disabled={busy}
+            disabled={busy || !authorized}
               onClick={() => input.current?.click()}
             >
               <Upload size={17} />
@@ -190,6 +294,12 @@ export default function App() {
               const f = e.target.files?.[0];
               if (f) void upload(f);
             }}
+          />
+          <UploadPolicy
+            value={governance}
+            authorized={authorized}
+            onChange={setGovernance}
+            onAuthorized={setAuthorized}
           />
           {error && (
             <div role="alert" className="error">
@@ -223,7 +333,7 @@ export default function App() {
               <p>Drop a CSV file here to explore its quality and structure.</p>
               <button
                 className="primary"
-                disabled={busy}
+                disabled={busy || !authorized}
                 onClick={() => input.current?.click()}
               >
                 {busy ? "Analyzing…" : "Choose a CSV file"}
@@ -247,9 +357,12 @@ export default function App() {
                   </p>
                 </div>
                 <div className="file-actions">
+                  <button className="report-button" onClick={clearDataset}>
+                    <Trash2 size={15} /> Clear dataset
+                  </button>
                   <button
                     className="report-button"
-                    onClick={() => downloadExecutiveReport(data)}
+                    onClick={() => downloadExecutiveReport(data, auditEvents)}
                   >
                     <Download size={15} /> Export executive brief
                   </button>
@@ -285,6 +398,43 @@ export default function App() {
               {tab === "Overview" && (
                 <>
                   <ExecutiveBrief data={data} />
+                  <GovernancePanel
+                    data={data}
+                    rules={businessRules}
+                    auditEvents={auditEvents}
+                    busy={busy}
+                    canApprove={
+                      ["admin", "approver", "developer"].includes(role) &&
+                      data.executive.status === "Ready for exploration" &&
+                      data.business_rules.configured &&
+                      data.business_rules.passed
+                    }
+                    onRule={(name, rule) =>
+                      setBusinessRules((rules) => ({ ...rules, [name]: rule }))
+                    }
+                    onApplyRules={() => {
+                      if (!lastFile) return;
+                      const overrides = Object.fromEntries(
+                        columnNames.flatMap((name, index) =>
+                          columnTypes[index] === "auto"
+                            ? []
+                            : [[name, columnTypes[index]]],
+                        ),
+                      );
+                      void upload(
+                        lastFile,
+                        data.header.used ? "present" : "absent",
+                        {
+                          column_names: columnNames,
+                          type_overrides: overrides,
+                          business_rules: businessRules,
+                        },
+                      );
+                    }}
+                    onAudit={(action, note) =>
+                      void recordAudit(action, note)
+                    }
+                  />
                   {data.header.generated_names && (
                     <section className="header-notice" role="status">
                       <CircleAlert size={20} />

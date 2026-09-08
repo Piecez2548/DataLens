@@ -69,6 +69,7 @@ def _executive_summary(
     outliers: int,
     correlations: list[dict],
     embedded_delimiters: list[str],
+    business_rule_violations: int,
 ) -> dict:
     issues = []
     if not header_detected:
@@ -136,6 +137,15 @@ def _executive_summary(
                 "recommendation": "Confirm whether each pipe-separated field needs its own CSV column before reporting.",
             }
         )
+    if business_rule_violations:
+        issues.append(
+            {
+                "severity": "high",
+                "title": f"{business_rule_violations:,} business-rule violations require action",
+                "detail": "Uploaded values fall outside rules explicitly configured for this analysis.",
+                "recommendation": "Resolve each violation or document an approved exception before executive use.",
+            }
+        )
     high = sum(item["severity"] == "high" for item in issues)
     if high:
         status, message = "Action required", "Resolve high-impact data risks before executive reporting."
@@ -164,6 +174,7 @@ def analyze(
     header_mode: str = "auto",
     column_names: list[str] | None = None,
     type_overrides: dict[str, str] | None = None,
+    business_rules: dict[str, dict] | None = None,
 ) -> dict:
     if len(content) > MAX_BYTES:
         raise ValueError("CSV exceeds the 10 MB limit.")
@@ -344,6 +355,50 @@ def analyze(
         pipe_ratio = float(values.str.count(r"\|").ge(2).mean()) if len(values) else 0
         if header.count("|") >= 2 or pipe_ratio >= 0.8:
             embedded_delimiters.append(header)
+    if business_rules is None:
+        business_rules = {}
+    if not isinstance(business_rules, dict):
+        raise ValueError("Business rules must be an object keyed by column name.")
+    rule_results = []
+    for name, rule in business_rules.items():
+        if name not in headers or not isinstance(rule, dict):
+            raise ValueError("Each business rule must target an existing column.")
+        if set(rule) - {"required", "allowed_values", "min", "max"}:
+            raise ValueError("A business rule contains an unsupported condition.")
+        if "required" in rule and not isinstance(rule["required"], bool):
+            raise ValueError("required business rules must be boolean values.")
+        values = normalized[name]
+        nonempty = values.dropna().astype(str)
+        if rule.get("required") is True:
+            rule_results.append({"column": name, "rule": "required", "checked": n, "violations": int(values.isna().sum())})
+        if "allowed_values" in rule:
+            allowed = rule["allowed_values"]
+            if not isinstance(allowed, list) or len(allowed) > 100 or not all(isinstance(item, str) for item in allowed):
+                raise ValueError("allowed_values must be a list of at most 100 text values.")
+            allowed_set = set(allowed)
+            rule_results.append(
+                {
+                    "column": name,
+                    "rule": "allowed_values",
+                    "checked": len(nonempty),
+                    "violations": int((~nonempty.isin(allowed_set)).sum()),
+                }
+            )
+        numeric_values = pd.to_numeric(nonempty, errors="coerce").replace([np.inf, -np.inf], np.nan).dropna()
+        for key, operator in (("min", "below_min"), ("max", "above_max")):
+            if key not in rule:
+                continue
+            column_type = next(column["type"] for column in columns if column["name"] == name)
+            if column_type != "numeric":
+                raise ValueError(f"{key} business rules require a numeric column.")
+            threshold = rule[key]
+            if not isinstance(threshold, (int, float)) or not np.isfinite(threshold):
+                raise ValueError(f"{key} business rules must be finite numbers.")
+            violations = (numeric_values < threshold).sum() if key == "min" else (numeric_values > threshold).sum()
+            rule_results.append(
+                {"column": name, "rule": operator, "threshold": float(threshold), "checked": len(numeric_values), "violations": int(violations)}
+            )
+    business_rule_violations = sum(item["violations"] for item in rule_results)
     executive = _executive_summary(
         scores=scores,
         missing=missing,
@@ -355,6 +410,7 @@ def analyze(
         outliers=outliers,
         correlations=correlations,
         embedded_delimiters=embedded_delimiters,
+        business_rule_violations=business_rule_violations,
     )
     numeric_names = list(numeric)
     scatter = []
@@ -384,6 +440,12 @@ def analyze(
         "scatter": scatter,
         "scatter_axes": scatter_axes,
         "correlations": correlations[:10],
+        "business_rules": {
+            "configured": bool(business_rules),
+            "passed": business_rule_violations == 0,
+            "total_violations": business_rule_violations,
+            "results": rule_results,
+        },
         "provenance": {
             "source": "uploaded_file",
             "sha256": hashlib.sha256(content).hexdigest(),
@@ -391,7 +453,7 @@ def analyze(
             "file_rows": len(all_rows),
             "analyzed_rows": n,
             "preview_rows": min(n, 100),
-            "method_version": "0.5.2",
+            "method_version": "0.6.0",
             "calculation_mode": "deterministic",
             "data_values_generated": False,
         },

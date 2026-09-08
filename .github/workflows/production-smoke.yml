@@ -1,0 +1,44 @@
+name: Production smoke check
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify health, auth enforcement, and security headers
+        shell: python
+        run: |
+          import json
+          import urllib.error
+          import urllib.request
+
+          origin = "https://datalens-kappa-one.vercel.app"
+          with urllib.request.urlopen(f"{origin}/api/health", timeout=30) as response:
+              health = json.load(response)
+              assert health["status"] == "ok"
+              assert health["authentication_required"] is True
+              headers = {key.lower(): value for key, value in response.headers.items()}
+              assert "no-store" in headers["cache-control"]
+              assert headers["x-content-type-options"] == "nosniff"
+
+          request = urllib.request.Request(
+              f"{origin}/api/analyze",
+              data=b"",
+              method="POST",
+          )
+          try:
+              urllib.request.urlopen(request, timeout=30)
+          except urllib.error.HTTPError as error:
+              assert error.code == 401
+          else:
+              raise AssertionError("Unauthenticated analysis was not rejected")
+
+          with urllib.request.urlopen(origin, timeout=30) as response:
+              headers = {key.lower(): value for key, value in response.headers.items()}
+              assert headers["x-frame-options"] == "DENY"
+              assert "max-age=" in headers["strict-transport-security"]
+              assert "default-src 'self'" in headers["content-security-policy"]
