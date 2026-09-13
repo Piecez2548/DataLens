@@ -406,6 +406,16 @@ header {
   margin: 0 14px;
   opacity: 0.5;
 }
+.mobile-home {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  color: var(--text);
+  font-weight: 700;
+  text-decoration: none;
+}
+.mobile-home svg { color: var(--accent); }
 .icon-button {
   width: 44px;
   height: 44px;
@@ -862,6 +872,8 @@ footer span:first-child {
   .breadcrumb {
     margin-right: auto;
   }
+  .mobile-home { display: inline-flex; }
+  .breadcrumb { display: none; }
   .content {
     padding: 25px 20px;
   }
@@ -1093,6 +1105,10 @@ footer span:first-child {
 .audit-controls { display: flex; align-items: center; gap: 10px; margin-top: 17px; padding-top: 17px; border-top: 1px solid var(--border); }
 .audit-controls > div { margin-right: auto; }
 .audit-controls p { margin: 3px 0 0; font-size: 11px; }
+.audit-controls .audit-disclaimer {
+  max-width: 62ch;
+  line-height: 1.55;
+}
 @media (max-width: 900px) {
   .governance-summary { grid-template-columns: repeat(2, 1fr); }
   .rule-row { grid-template-columns: 1fr 1fr; }

@@ -3,7 +3,9 @@ import hmac
 import json
 import os
 import time
+from base64 import urlsafe_b64decode
 from dataclasses import dataclass
+from typing import Annotated
 
 import httpx
 from fastapi import Depends, HTTPException
@@ -28,7 +30,7 @@ def auth_required() -> bool:
 
 
 async def current_user(
-    credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)],
 ) -> UserContext:
     if not auth_required():
         return UserContext(id="local-development", email=None, role="developer")
@@ -49,11 +51,27 @@ async def current_user(
     if response.status_code != 200:
         raise HTTPException(401, "Your session is invalid or expired.", headers={"WWW-Authenticate": "Bearer"})
     payload = response.json()
+    verified_factors = [factor for factor in payload.get("factors", []) if factor.get("status") == "verified"]
+    if verified_factors and _verified_token_claims(credentials.credentials).get("aal") != "aal2":
+        raise HTTPException(401, "Complete multi-factor authentication before using DataLens.")
     role = str(payload.get("app_metadata", {}).get("role") or "authenticated")
     allowed = {item.strip() for item in os.environ.get("DATALENS_ALLOWED_ROLES", "authenticated").split(",")}
     if role not in allowed:
         raise HTTPException(403, "Your account is not authorized for DataLens.")
     return UserContext(id=str(payload["id"]), email=payload.get("email"), role=role)
+
+
+def _verified_token_claims(token: str) -> dict:
+    """Read assurance claims only after Supabase verifies this exact token."""
+    try:
+        encoded = token.split(".")[1]
+        raw = urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4))
+        claims = json.loads(raw)
+    except (IndexError, UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
+        raise HTTPException(401, "Your session is invalid or expired.") from exc
+    if not isinstance(claims, dict):
+        raise HTTPException(401, "Your session is invalid or expired.")
+    return claims
 
 
 def sign_audit_event(event: dict) -> dict:

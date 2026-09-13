@@ -91,6 +91,8 @@ Only empty or whitespace-only cells count as missing. Literal `NA`, `null`, and 
 
 Business rules are separate from structural quality. A dataset can have a high quality score and still fail a required field, domain, minimum, or maximum rule. Approval is enabled only for an approver/admin/developer role when the structural status is ready and configured rules pass.
 
+Review and approval events are signed session records carried into the exported brief. DataLens does not persist them. Internal workflow approval is not an audit opinion, legal approval, certification, or assurance of source-data accuracy. An organization that needs a system of record must add approved durable audit storage and retention controls.
+
 ## Security and data handling
 
 - Production analysis endpoints require a valid Supabase bearer token and an allowed role.
@@ -119,13 +121,9 @@ cd ../backend
 
 CI also runs `npm audit --audit-level=high`, `pip-audit`, and the browser workflow. A scheduled production smoke test verifies availability, auth enforcement, and security headers without uploading business data.
 
-## Screenshots
+## Demo evidence
 
-| Capture | Placeholder |
-| --- | --- |
-| Governed upload | `docs/overview-light.png` |
-| Quality and evidence view | `docs/overview-dark.png` |
-| Rules and approval | `docs/explore.png` |
+No approved product screenshots are checked into this repository. Demonstrations must use the current production build with `samples/demo.csv`, which is fictional test data and must be labelled as such. Historical local customer-file observations in `VALIDATION.md` are not current-release or business evidence.
 
 ## Roadmap
 

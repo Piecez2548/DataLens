@@ -298,6 +298,11 @@ function AuditControls({
             passing business rules, a completed review, and an approver role.
           </p>
         )}
+        <p className="audit-disclaimer">
+          Internal workflow approval is included in the exported brief only.
+          DataLens does not retain this record. It is not an audit opinion, legal
+          approval, certification, or assurance of source-data accuracy.
+        </p>
       </div>
       <button
         onClick={() =>
@@ -310,9 +315,9 @@ function AuditControls({
         className="primary"
         disabled={!canApprove}
         title={canApprove ? "" : "Passing rules and an approver role are required"}
-        onClick={() => onAudit("approve", "Approved for executive use.")}
+        onClick={() => onAudit("approve", "Internal workflow approval recorded.")}
       >
-        Approve report
+        Record internal approval
       </button>
     </div>
   );

@@ -35,6 +35,7 @@ test("analyzes a real CSV with governance, rules, and signed review", async ({
 
   await page.getByRole("button", { name: "Mark as reviewed" }).click();
   await expect(page.getByText(/2 event\(s\).*analysis.reviewed/)).toBeVisible();
+  await expect(page.getByText(/not an audit opinion, legal approval/i)).toBeVisible();
 
   await page.getByRole("button", { name: "Clear dataset" }).click();
   await expect(page.getByRole("heading", { name: /next discovery/ })).toBeVisible();
@@ -61,5 +62,17 @@ test("supports a mobile browser workflow without page overflow", async ({ page }
   }));
   expect(layout.documentWidth).toBeLessThanOrEqual(layout.viewport);
   expect(layout.minButtonHeight).toBeGreaterThanOrEqual(44);
+});
 
+test("keeps product identity and the Nexus return path on mobile", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+
+  const home = page.getByRole("link", { name: "Back to Nexus All" });
+  await expect(home).toBeVisible();
+  await expect(home).toHaveAttribute(
+    "href",
+    "https://nexus-lemon-eight-32.vercel.app/projects",
+  );
+  await expect(page.getByRole("heading", { name: /Good insights/ })).toBeVisible();
 });

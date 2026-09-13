@@ -258,8 +258,13 @@ export default function App() {
       </aside>
       <main>
         <header>
-          <a className="mobile-nexus" href="https://nexus-lemon-eight-32.vercel.app/projects">
-            ← Nexus
+          <a
+            className="mobile-home"
+            href="https://nexus-lemon-eight-32.vercel.app/projects"
+            aria-label="Back to Nexus All"
+          >
+            <Aperture size={22} aria-hidden="true" />
+            <span>DataLens</span>
           </a>
           <div className="breadcrumb">
             Workspace <span>/</span> Dataset explorer

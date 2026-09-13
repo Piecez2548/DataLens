@@ -247,7 +247,7 @@ def analyze(
         def kind(value):
             if value.lower() in {"true", "false"}:
                 return "boolean"
-            if re.fullmatch(r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?|[+-]?(?:inf(?:inity)?|nan)", value, re.I):
+            if re.fullmatch(r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?|[+-]?(?:inf(?:inity)?|nan)", value, re.IGNORECASE):
                 return "numeric"
             if re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
                 return "datetime"
@@ -264,10 +264,7 @@ def analyze(
         if normalized_name in {"id", "customer_id", "record_id", "user_id"} or normalized_name.endswith("_id"):
             inferred = "identifier"
         dtype = type_overrides.get(name, inferred)
-        if dtype == "email":
-            mismatch = 0
-            matched = values
-        elif dtype == "identifier":
+        if dtype == "email" or dtype == "identifier":
             mismatch = 0
             matched = values
         else:
@@ -356,7 +353,7 @@ def analyze(
     if business_rules is None:
         business_rules = {}
     if not isinstance(business_rules, dict):
-        raise ValueError("Business rules must be an object keyed by column name.")
+        raise TypeError("Business rules must be an object keyed by column name.")
     rule_results = []
     for name, rule in business_rules.items():
         if name not in headers or not isinstance(rule, dict):

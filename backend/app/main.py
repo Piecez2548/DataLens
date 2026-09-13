@@ -1,7 +1,8 @@
 import hashlib
 import json
 import os
-from datetime import date
+from datetime import UTC, date, datetime
+from typing import Annotated
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -53,9 +54,9 @@ def health():
 @app.post("/api/analyze")
 async def upload(
     file: UploadFile,
+    actor: Annotated[UserContext, Depends(current_user)],
     header_mode: str = Query("auto", pattern="^(auto|present|absent)$"),
     schema_config_json: str | None = Form(None, alias="schema"),
-    actor: UserContext = Depends(current_user),
 ):
     try:
         if not (file.filename or "").lower().endswith(".csv"):
@@ -91,7 +92,7 @@ async def upload(
                 verified_date = date.fromisoformat(declared["verified_at"])
             except ValueError as exc:
                 raise HTTPException(400, "Source checked date must use YYYY-MM-DD.") from exc
-            if verified_date > date.today():
+            if verified_date > datetime.now(UTC).date():
                 raise HTTPException(400, "Source checked date cannot be in the future.")
         if auth_required() and declared.get("authorized_to_process") is not True:
             raise HTTPException(400, "Authorization for this non-personal file must be attested before analysis.")
@@ -144,14 +145,14 @@ async def upload(
             },
         )
         return result
-    except ValueError as exc:
+    except (TypeError, ValueError) as exc:
         raise HTTPException(400, str(exc)) from exc
     finally:
         await file.close()
 
 
 @app.post("/api/audit/review")
-async def review_analysis(payload: AuditRequest, actor: UserContext = Depends(current_user)):
+async def review_analysis(payload: AuditRequest, actor: Annotated[UserContext, Depends(current_user)]):
     analysis_event = verify_audit_event(payload.analysis_event)
     if analysis_event.get("action") != "analysis.completed" or analysis_event.get("analysis_id") != payload.analysis_id:
         raise HTTPException(400, "The analysis evidence does not match this analysis.")
@@ -164,7 +165,7 @@ async def review_analysis(payload: AuditRequest, actor: UserContext = Depends(cu
 
 
 @app.post("/api/audit/approve")
-async def approve_analysis(payload: AuditRequest, actor: UserContext = Depends(current_user)):
+async def approve_analysis(payload: AuditRequest, actor: Annotated[UserContext, Depends(current_user)]):
     if actor.role not in {"admin", "approver"} and not (not auth_required() and actor.role == "developer"):
         raise HTTPException(403, "An approver or administrator role is required.")
     analysis_event = verify_audit_event(payload.analysis_event)

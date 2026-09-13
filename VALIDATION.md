@@ -1,6 +1,16 @@
 # Validation results
 
-## Production deployment
+## Current executive-demo release — 2026-09-09
+
+Frontend ESLint, TypeScript/Vite production build, npm audit, backend Ruff, 42 backend tests, pip-audit, and both Playwright enterprise workflows pass. Production authentication remains mandatory and uses the approved Supabase identity on DataLens's separate origin. Hosted deployments fail closed when the auth flag is missing, and accounts with a verified TOTP factor must complete an `aal2` challenge.
+
+Deployment `dpl_88vRJpym3LkSDpXAnYEeAdSEtxpz` is READY and aliased to https://datalens-kappa-one.vercel.app. Live checks report version `0.7.0`, returned 200 for the landing page and `/api/health`, reported `authentication_required: true`, and rejected an unauthenticated `/api/analyze` request with 401. HSTS, CSP, frame denial, MIME sniffing protection, and `no-store` API caching headers are present.
+
+## Historical v0.5.2 validation (superseded)
+
+The section below is retained as historical test evidence only. Its row counts, local-file observations, dependency versions and 21-test total describe v0.5.2 and must not be quoted as validation of the current v0.7.0 production release. Current release evidence is recorded above.
+
+## Production deployment (v0.5.2 historical record)
 
 Published to https://datalens-kappa-one.vercel.app on Vercel. Deployment status: Ready. Unauthenticated HTTPS checks passed for the homepage, `/api/health`, and multipart `/api/analyze`. The v0.5.2 production workflow accepts only user-uploaded source files and does not offer fictional business data. Validation used a local, uncommitted 1,000-row customer file that has no header row. That file was reanalyzed with governed column names and type overrides: all 1,000 records remained, the ID was excluded from numeric analysis, and all 1,000 email values passed the basic format check. Its independently calculated SHA-256 fingerprint matched the response provenance, which also reported 73,426 input bytes, 1,000 analyzed rows, deterministic method v0.5.2, and no generated data values. The browser-generated executive report passes TypeScript compilation, ESLint, and the production build. Frontend lint/build and all 21 backend tests pass.
 

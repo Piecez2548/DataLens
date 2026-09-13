@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.1 — Release reliability addendum (2026-09-08)
+
+- Declare Uvicorn as a runtime dependency so local browser validation and CI start the FastAPI service deterministically.
+- Update FastAPI dependency annotations for current type and lint tooling.
+- Preserve a clear client error when business rules are not an object.
+- Revalidate frontend build, browser workflow, backend tests, lint, and dependency audits before the Nexus executive release.
+
 ## 0.5.2 — Exact Tukey fences
 
 - Apply the 1.5×IQR rule when IQR is zero instead of skipping minority values outside the collapsed fence.

@@ -15,6 +15,8 @@ type AuthState = {
   session: Session | null;
   user: User | null;
   role: string;
+  mfaFactorId: string;
+  verifyMfa: (code: string) => Promise<void>;
   signOut: () => Promise<void>;
 };
 
@@ -22,26 +24,47 @@ const AuthContext = createContext<AuthState | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
+  const [mfaFactorId, setMfaFactorId] = useState("");
   const [ready, setReady] = useState(!configured);
   useEffect(() => {
     if (!supabase) return;
-    void supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
+    let active = true;
+    async function applySession(next: Session | null) {
+      let pendingFactor = "";
+      if (next) {
+        const [factors, assurance] = await Promise.all([
+          supabase!.auth.mfa.listFactors(),
+          supabase!.auth.mfa.getAuthenticatorAssuranceLevel(),
+        ]);
+        const verified = factors.data?.totp.find((factor) => factor.status === "verified");
+        if (verified && assurance.data?.currentLevel !== "aal2") pendingFactor = verified.id;
+      }
+      if (!active) return;
+      setSession(next);
+      setMfaFactorId(pendingFactor);
       setReady(true);
-    });
-    const { data } = supabase.auth.onAuthStateChange((_event, next) => setSession(next));
-    return () => data.subscription.unsubscribe();
+    }
+    void supabase.auth.getSession().then(({ data }) => applySession(data.session));
+    const { data } = supabase.auth.onAuthStateChange((_event, next) => { void applySession(next); });
+    return () => { active = false; data.subscription.unsubscribe(); };
   }, []);
   const value = useMemo<AuthState>(
     () => ({
       session,
       user: session?.user ?? null,
       role: String(session?.user.app_metadata?.role ?? "authenticated"),
+      mfaFactorId,
+      verifyMfa: async (code: string) => {
+        if (!supabase || !mfaFactorId) throw new Error("MFA challenge is unavailable");
+        const { error } = await supabase.auth.mfa.challengeAndVerify({ factorId: mfaFactorId, code: code.trim() });
+        if (error) throw error;
+        setMfaFactorId("");
+      },
       signOut: async () => {
         if (supabase) await supabase.auth.signOut();
       },
     }),
-    [session],
+    [session, mfaFactorId],
   );
   if (!ready) return <div className="auth-loading">Checking your secure session…</div>;
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -54,11 +77,12 @@ export function useAuth() {
 }
 
 export function AuthGate({ children }: { children: React.ReactNode }) {
-  const { session } = useAuth();
+  const { session, mfaFactorId, verifyMfa, signOut } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [mfaCode, setMfaCode] = useState("");
   if (developmentBypass) return children;
   if (!configured) {
     return (
@@ -71,7 +95,38 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       </div>
     );
   }
-  if (session) return children;
+  if (session && !mfaFactorId) return children;
+  if (session && mfaFactorId) {
+    async function submitMfa(event: React.FormEvent) {
+      event.preventDefault();
+      setBusy(true);
+      setError("");
+      try {
+        await verifyMfa(mfaCode);
+      } catch {
+        setError("Verification failed. Check the current code and try again.");
+      } finally {
+        setBusy(false);
+      }
+    }
+    return (
+      <div className="auth-shell">
+        <section className="auth-card">
+          <div className="auth-brand"><Aperture size={30} /> DataLens</div>
+          <span className="eyebrow">MULTI-FACTOR VERIFICATION</span>
+          <h1>Confirm your secure session</h1>
+          <p>Enter the current code from the authenticator connected to your Nexus account.</p>
+          <form onSubmit={(event) => void submitMfa(event)}>
+            <label htmlFor="auth-mfa">Authenticator code</label>
+            <input id="auth-mfa" inputMode="numeric" autoComplete="one-time-code" required pattern="[0-9]{6}" maxLength={6} value={mfaCode} onChange={(event) => setMfaCode(event.target.value.replace(/\D/g, ""))} />
+            {error && <p className="auth-error" role="alert">{error}</p>}
+            <button className="primary" disabled={busy || mfaCode.length !== 6}>{busy ? "Verifying…" : "Verify"}</button>
+          </form>
+          <button type="button" onClick={() => void signOut()}>Sign out</button>
+        </section>
+      </div>
+    );
+  }
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     setBusy(true);

@@ -1,6 +1,9 @@
-import pytest
 import json
+from base64 import urlsafe_b64encode
+
+import pytest
 from fastapi.testclient import TestClient
+
 from app.analysis import analyze
 from app.main import app
 
@@ -303,6 +306,49 @@ def test_valid_supabase_session_is_verified_and_actor_is_recorded(monkeypatch):
     assert response.status_code == 200
     assert response.json()["governance"]["actor_id"] == "user-123"
     assert response.json()["governance"]["actor_role"] == "analyst"
+
+
+def test_enrolled_mfa_rejects_password_only_session(monkeypatch):
+    class Response:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return {
+                "id": "user-123",
+                "app_metadata": {"role": "analyst"},
+                "factors": [{"status": "verified", "factor_type": "totp"}],
+            }
+
+    class Client:
+        def __init__(self, **_kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def get(self, *_args, **_kwargs):
+            return Response()
+
+    monkeypatch.setenv("DATALENS_AUTH_REQUIRED", "true")
+    monkeypatch.setenv("SUPABASE_URL", "https://project.supabase.co")
+    monkeypatch.setenv("SUPABASE_ANON_KEY", "public-key")
+    monkeypatch.setenv("DATALENS_ALLOWED_ROLES", "analyst")
+    monkeypatch.setattr("app.security.httpx.AsyncClient", Client)
+    claims = urlsafe_b64encode(json.dumps({"aal": "aal1"}).encode()).decode().rstrip("=")
+    token = f"header.{claims}.signature"
+
+    response = TestClient(app).post(
+        "/api/analyze",
+        headers={"Authorization": f"Bearer {token}"},
+        files={"file": ("demo.csv", b"amount\n10\n")},
+    )
+
+    assert response.status_code == 401
+    assert "multi-factor" in response.json()["detail"]
 
 
 def test_numeric_business_rule_rejects_a_text_column():
