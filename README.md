@@ -1,9 +1,14 @@
 # DataLens
 
-**Production:** https://datalens-kappa-one.vercel.app · **GitHub:** https://github.com/Piecez2548/DataLens · **Nexus:** https://nexus-lemon-eight-32.vercel.app/projects
+DataLens is a deterministic CSV profiling workspace for governed, reviewable data analysis. It derives metrics from uploaded bytes without calling an AI API and does not intentionally persist CSV contents.
 
-DataLens is a CSV structural-profiling workspace for reviewable decisions. It uses the same Supabase account as Nexus, calculates every metric deterministically from the uploaded bytes, and does not call an AI API. The application does not intentionally persist CSV contents; transient processing by the web framework and hosting platform can occur.
+| Resource | URL |
+| --- | --- |
+| Production | https://datalens-kappa-one.vercel.app |
+| Repository | https://github.com/Piecez2548/DataLens |
+| Project Hub | https://nexus-lemon-eight-32.vercel.app/projects |
 
+The platform supports authenticated analysis, structural quality metrics, business rules, review workflows, signed metadata events, and an exportable executive brief. It does not certify that a dataset is accurate, complete, lawful, or suitable for a particular business decision; the accountable data owner remains responsible for those determinations.
 ## v0.7.1
 
 - Supabase authentication with allowlisted roles and a shared Nexus account.
@@ -132,3 +137,5 @@ No approved product screenshots are checked into this repository. Demonstrations
 - SAML/OIDC enterprise SSO, SCIM, and group-to-role mapping.
 - Approved encrypted object storage for files larger than 4 MiB.
 - Saved policy templates, custom missing markers, delimiters, encodings, XLSX, and time-series analysis.
+
+
