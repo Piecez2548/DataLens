@@ -127,7 +127,9 @@ export function GovernancePanel({
   rules,
   auditEvents,
   busy,
+  signedIn,
   canApprove,
+  onSignIn,
   onRule,
   onApplyRules,
   onAudit,
@@ -136,7 +138,9 @@ export function GovernancePanel({
   rules: Record<string, BusinessRule>;
   auditEvents: AuditEvent[];
   busy: boolean;
+  signedIn: boolean;
   canApprove: boolean;
+  onSignIn: () => void;
   onRule: (column: string, rule: BusinessRule) => void;
   onApplyRules: () => void;
   onAudit: (action: "review" | "approve", note: string) => void;
@@ -267,7 +271,9 @@ export function GovernancePanel({
         )}
         <AuditControls
           events={auditEvents}
+          signedIn={signedIn}
           canApprove={canApprove}
+          onSignIn={onSignIn}
           onAudit={onAudit}
         />
       </div>
@@ -277,13 +283,29 @@ export function GovernancePanel({
 
 function AuditControls({
   events,
+  signedIn,
   canApprove,
+  onSignIn,
   onAudit,
 }: {
   events: AuditEvent[];
+  signedIn: boolean;
   canApprove: boolean;
+  onSignIn: () => void;
   onAudit: (action: "review" | "approve", note: string) => void;
 }) {
+  if (!signedIn) {
+    return (
+      <div className="audit-controls">
+        <div>
+          <strong>Review record</strong>
+          <p>{events.length} event(s) · latest: {events.at(-1)?.action ?? "none"}</p>
+          <p role="status">Sign in with your Nexus account to record a review or internal approval.</p>
+        </div>
+        <button className="primary" onClick={onSignIn}>Sign in to review</button>
+      </div>
+    );
+  }
   const latest = events.at(-1);
   return (
     <div className="audit-controls">

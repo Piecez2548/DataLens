@@ -61,6 +61,15 @@ async def current_user(
     return UserContext(id=str(payload["id"]), email=payload.get("email"), role=role)
 
 
+async def optional_user(
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)],
+) -> UserContext:
+    """Analysis is public; a presented session is still verified so its actor is recorded."""
+    if credentials is None and auth_required():
+        return UserContext(id="anonymous", email=None, role="anonymous")
+    return await current_user(credentials)
+
+
 def _verified_token_claims(token: str) -> dict:
     """Read assurance claims only after Supabase verifies this exact token."""
     try:

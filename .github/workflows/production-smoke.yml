@@ -26,8 +26,9 @@ jobs:
               assert headers["x-content-type-options"] == "nosniff"
 
           request = urllib.request.Request(
-              f"{origin}/api/analyze",
-              data=b"",
+              f"{origin}/api/audit/review",
+              data=b"{}",
+              headers={"Content-Type": "application/json"},
               method="POST",
           )
           try:
@@ -35,7 +36,7 @@ jobs:
           except urllib.error.HTTPError as error:
               assert error.code == 401
           else:
-              raise AssertionError("Unauthenticated analysis was not rejected")
+              raise AssertionError("Unauthenticated review was not rejected")
 
           with urllib.request.urlopen(origin, timeout=30) as response:
               headers = {key.lower(): value for key, value in response.headers.items()}

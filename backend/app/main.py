@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
 from .analysis import MAX_BYTES, analyze
-from .security import UserContext, auth_required, current_user, new_audit_event, verify_audit_event
+from .security import UserContext, auth_required, current_user, new_audit_event, optional_user, verify_audit_event
 
 UPLOAD_LIMIT = 4 * 1024 * 1024 if os.environ.get("VERCEL") else MAX_BYTES
 
@@ -48,13 +48,14 @@ async def security_headers(request: Request, call_next):
 
 @app.get("/api/health")
 def health():
+    # Sign-in is required for review and approval only; analysis is public.
     return {"status": "ok", "version": app.version, "authentication_required": auth_required()}
 
 
 @app.post("/api/analyze")
 async def upload(
     file: UploadFile,
-    actor: Annotated[UserContext, Depends(current_user)],
+    actor: Annotated[UserContext, Depends(optional_user)],
     header_mode: str = Query("auto", pattern="^(auto|present|absent)$"),
     schema_config_json: str | None = Form(None, alias="schema"),
 ):

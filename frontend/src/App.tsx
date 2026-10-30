@@ -8,6 +8,7 @@ import {
   Database,
   Download,
   FileSpreadsheet,
+  LogIn,
   LogOut,
   Moon,
   Sun,
@@ -16,7 +17,7 @@ import {
   X,
 } from "lucide-react";
 import type { Analysis, AuditEvent, BusinessRule } from "./types";
-import { useAuth } from "./auth";
+import { SignInDialog, useAuth } from "./auth";
 import {
   GovernancePanel,
   UploadPolicy,
@@ -45,7 +46,11 @@ const fmt = (n: number) =>
   n.toLocaleString(undefined, { maximumFractionDigits: 2 });
 
 export default function App() {
-  const { session, user, role, signOut } = useAuth();
+  const { session, user, role, signedIn, signOut } = useAuth();
+  const [signInOpen, setSignInOpen] = useState(false);
+  // Only a fully verified session is sent; analysis itself needs none.
+  const authHeader: Record<string, string> =
+    signedIn && session ? { Authorization: `Bearer ${session.access_token}` } : {};
   const [data, setData] = useState<Analysis | null>(null);
   const [tab, setTab] = useState<(typeof tabs)[number]>("Overview");
   const [selected, setSelected] = useState("");
@@ -115,7 +120,7 @@ export default function App() {
       const response = await fetch(`/api/analyze?header_mode=${headerMode}`, {
         method: "POST",
         body,
-        headers: session ? { Authorization: `Bearer ${session.access_token}` } : undefined,
+        headers: authHeader,
       });
       if (!response.ok) {
         const e = await response.json().catch(() => ({
@@ -168,9 +173,7 @@ export default function App() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(session
-            ? { Authorization: `Bearer ${session.access_token}` }
-            : {}),
+          ...authHeader,
         },
         body: JSON.stringify({
           analysis_id: data.governance.analysis_id,
@@ -270,10 +273,12 @@ export default function App() {
             Workspace <span>/</span> Dataset explorer
           </div>
           <div className="header-actions">
-            <div className="user-chip">
-              <strong>{user?.email}</strong>
-              <span>{role}</span>
-            </div>
+            {signedIn && user && (
+              <div className="user-chip">
+                <strong>{user.email}</strong>
+                <span>{role}</span>
+              </div>
+            )}
             <button
               className="icon-button"
               aria-label={dark ? "Use light theme" : "Use dark theme"}
@@ -281,9 +286,15 @@ export default function App() {
             >
               {dark ? <Sun size={19} /> : <Moon size={19} />}
             </button>
-            <button className="icon-button" aria-label="Sign out" onClick={() => void signOut()}>
-              <LogOut size={18} />
-            </button>
+            {session ? (
+              <button className="icon-button" aria-label="Sign out" onClick={() => void signOut()}>
+                <LogOut size={18} />
+              </button>
+            ) : !signedIn && (
+              <button className="report-button" onClick={() => setSignInOpen(true)}>
+                <LogIn size={15} /> Sign in
+              </button>
+            )}
           </div>
         </header>
         <div className="content">
@@ -576,7 +587,10 @@ export default function App() {
                     rules={businessRules}
                     auditEvents={auditEvents}
                     busy={busy}
+                    signedIn={signedIn}
+                    onSignIn={() => setSignInOpen(true)}
                     canApprove={
+                      signedIn &&
                       ["admin", "approver"].includes(role) &&
                       data.executive.status === "Ready for exploration" &&
                       data.business_rules.configured &&
@@ -760,6 +774,9 @@ export default function App() {
           </footer>
         </div>
       </main>
+      {signInOpen && !signedIn && (
+        <SignInDialog onClose={() => setSignInOpen(false)} />
+      )}
     </div>
   );
 }

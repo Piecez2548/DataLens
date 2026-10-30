@@ -184,18 +184,37 @@ def test_business_rules_are_auditable_and_block_executive_readiness():
     assert result["executive"]["status"] == "Action required"
 
 
-def test_api_requires_a_session_when_enterprise_auth_is_enabled(monkeypatch):
+def test_analysis_is_public_when_enterprise_auth_is_enabled(monkeypatch):
     monkeypatch.setenv("DATALENS_AUTH_REQUIRED", "true")
-    client = TestClient(app)
-    response = client.post("/api/analyze", files={"file": ("demo.csv", b"x\n1\n")})
-    assert response.status_code == 401
+    monkeypatch.setenv("DATALENS_AUDIT_SECRET", "test-only-secret")
+    schema = json.dumps({"governance": {"authorized_to_process": True}})
+    response = TestClient(app).post(
+        "/api/analyze",
+        files={"file": ("demo.csv", b"x\n1\n"), "schema": (None, schema)},
+    )
+    assert response.status_code == 200
+    assert response.json()["governance"]["actor_role"] == "anonymous"
     assert response.headers["cache-control"] == "no-store, max-age=0"
+
+
+def test_review_and_approval_require_a_session_when_enterprise_auth_is_enabled(monkeypatch):
+    monkeypatch.setenv("DATALENS_AUTH_REQUIRED", "true")
+    monkeypatch.setenv("DATALENS_AUDIT_SECRET", "test-only-secret")
+    client = TestClient(app)
+    schema = json.dumps({"governance": {"authorized_to_process": True}})
+    analysis = client.post(
+        "/api/analyze",
+        files={"file": ("demo.csv", b"x\n1\n"), "schema": (None, schema)},
+    ).json()
+    payload = {"analysis_id": analysis["governance"]["analysis_id"], "analysis_event": analysis["audit_event"]}
+    assert client.post("/api/audit/review", json=payload).status_code == 401
+    assert client.post("/api/audit/approve", json=payload).status_code == 401
 
 
 def test_hosted_deployment_fails_closed_when_auth_flag_is_missing(monkeypatch):
     monkeypatch.delenv("DATALENS_AUTH_REQUIRED", raising=False)
     monkeypatch.setenv("VERCEL", "1")
-    response = TestClient(app).post("/api/analyze", files={"file": ("demo.csv", b"x\n1\n")})
+    response = TestClient(app).post("/api/audit/review", json={"analysis_id": "a" * 64, "analysis_event": {}})
     assert response.status_code == 401
 
 

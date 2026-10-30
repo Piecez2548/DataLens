@@ -1046,7 +1046,15 @@ footer span:first-child {
 .chart-data { margin-top: 14px; font-size: 12px; }
 .chart-data summary { cursor: pointer; color: var(--accent-text); font-weight: 700; }
 .chart-data table { margin-top: 10px; }
-.auth-loading { min-height: 100vh; display: grid; place-items: center; }
+.auth-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  overflow-y: auto;
+  background: #1d213099;
+}
+.auth-dialog { position: relative; width: min(430px, 100%); }
+.auth-close { position: absolute; top: 12px; right: 12px; }
 .header-actions { display: flex; align-items: center; gap: 9px; }
 .user-chip { display: grid; text-align: right; line-height: 1.2; }
 .user-chip strong { max-width: 240px; overflow: hidden; text-overflow: ellipsis; font-size: 12px; }
