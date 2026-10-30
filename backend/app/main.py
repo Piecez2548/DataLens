@@ -2,15 +2,13 @@ import hashlib
 import json
 import os
 from datetime import UTC, date, datetime
-from typing import Annotated
-
-from fastapi import Depends, FastAPI, Form, HTTPException, Query, Request, UploadFile
+from fastapi import FastAPI, Form, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
 from .analysis import MAX_BYTES, analyze
-from .security import UserContext, auth_required, current_user, new_audit_event, optional_user, verify_audit_event
+from .security import is_hosted, new_audit_event, verify_audit_event
 
 UPLOAD_LIMIT = 4 * 1024 * 1024 if os.environ.get("VERCEL") else MAX_BYTES
 
@@ -21,7 +19,7 @@ class AuditRequest(BaseModel):
     review_event: dict | None = None
     note: str = Field(default="", max_length=500)
 
-app = FastAPI(title="DataLens API", version="0.7.1")
+app = FastAPI(title="DataLens API", version="0.8.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -48,14 +46,12 @@ async def security_headers(request: Request, call_next):
 
 @app.get("/api/health")
 def health():
-    # Sign-in is required for review and approval only; analysis is public.
-    return {"status": "ok", "version": app.version, "authentication_required": auth_required()}
+    return {"status": "ok", "version": app.version}
 
 
 @app.post("/api/analyze")
 async def upload(
     file: UploadFile,
-    actor: Annotated[UserContext, Depends(optional_user)],
     header_mode: str = Query("auto", pattern="^(auto|present|absent)$"),
     schema_config_json: str | None = Form(None, alias="schema"),
 ):
@@ -95,7 +91,7 @@ async def upload(
                 raise HTTPException(400, "Source checked date must use YYYY-MM-DD.") from exc
             if verified_date > datetime.now(UTC).date():
                 raise HTTPException(400, "Source checked date cannot be in the future.")
-        if auth_required() and declared.get("authorized_to_process") is not True:
+        if is_hosted() and declared.get("authorized_to_process") is not True:
             raise HTTPException(400, "Authorization for this non-personal file must be attested before analysis.")
         result = await run_in_threadpool(
             analyze,
@@ -111,9 +107,6 @@ async def upload(
         ).hexdigest()
         result["governance"] = {
             "analysis_id": analysis_id,
-            "actor_id": actor.id,
-            "actor_email": actor.email,
-            "actor_role": actor.role,
             "retention": "request_only",
             "server_storage": False,
             "cache_control": "no-store",
@@ -131,7 +124,6 @@ async def upload(
             )
         result["audit_event"] = new_audit_event(
             "analysis.completed",
-            actor,
             analysis_id,
             {
                 "filename": file.filename,
@@ -153,22 +145,19 @@ async def upload(
 
 
 @app.post("/api/audit/review")
-async def review_analysis(payload: AuditRequest, actor: Annotated[UserContext, Depends(current_user)]):
+async def review_analysis(payload: AuditRequest):
     analysis_event = verify_audit_event(payload.analysis_event)
     if analysis_event.get("action") != "analysis.completed" or analysis_event.get("analysis_id") != payload.analysis_id:
         raise HTTPException(400, "The analysis evidence does not match this analysis.")
     return new_audit_event(
         "analysis.reviewed",
-        actor,
         payload.analysis_id,
         {"note": payload.note, "analysis_event_signature": analysis_event["signature"]},
     )
 
 
 @app.post("/api/audit/approve")
-async def approve_analysis(payload: AuditRequest, actor: Annotated[UserContext, Depends(current_user)]):
-    if actor.role not in {"admin", "approver"} and not (not auth_required() and actor.role == "developer"):
-        raise HTTPException(403, "An approver or administrator role is required.")
+async def approve_analysis(payload: AuditRequest):
     analysis_event = verify_audit_event(payload.analysis_event)
     review_event = verify_audit_event(payload.review_event or {})
     if analysis_event.get("action") != "analysis.completed" or analysis_event.get("analysis_id") != payload.analysis_id:
@@ -193,7 +182,6 @@ async def approve_analysis(payload: AuditRequest, actor: Annotated[UserContext, 
         raise HTTPException(400, "A verified review of this exact analysis is required.")
     return new_audit_event(
         "analysis.approved",
-        actor,
         payload.analysis_id,
         {
             "note": payload.note,

@@ -127,9 +127,7 @@ export function GovernancePanel({
   rules,
   auditEvents,
   busy,
-  signedIn,
   canApprove,
-  onSignIn,
   onRule,
   onApplyRules,
   onAudit,
@@ -138,9 +136,7 @@ export function GovernancePanel({
   rules: Record<string, BusinessRule>;
   auditEvents: AuditEvent[];
   busy: boolean;
-  signedIn: boolean;
   canApprove: boolean;
-  onSignIn: () => void;
   onRule: (column: string, rule: BusinessRule) => void;
   onApplyRules: () => void;
   onAudit: (action: "review" | "approve", note: string) => void;
@@ -163,10 +159,6 @@ export function GovernancePanel({
           <div>
             <span>File retention</span>
             <strong>Not stored</strong>
-          </div>
-          <div>
-            <span>Access role</span>
-            <strong>{data.governance.actor_role}</strong>
           </div>
         </div>
         <details className="rule-editor">
@@ -271,9 +263,7 @@ export function GovernancePanel({
         )}
         <AuditControls
           events={auditEvents}
-          signedIn={signedIn}
           canApprove={canApprove}
-          onSignIn={onSignIn}
           onAudit={onAudit}
         />
       </div>
@@ -283,29 +273,13 @@ export function GovernancePanel({
 
 function AuditControls({
   events,
-  signedIn,
   canApprove,
-  onSignIn,
   onAudit,
 }: {
   events: AuditEvent[];
-  signedIn: boolean;
   canApprove: boolean;
-  onSignIn: () => void;
   onAudit: (action: "review" | "approve", note: string) => void;
 }) {
-  if (!signedIn) {
-    return (
-      <div className="audit-controls">
-        <div>
-          <strong>Review record</strong>
-          <p>{events.length} event(s) · latest: {events.at(-1)?.action ?? "none"}</p>
-          <p role="status">Sign in with your Nexus account to record a review or internal approval.</p>
-        </div>
-        <button className="primary" onClick={onSignIn}>Sign in to review</button>
-      </div>
-    );
-  }
   const latest = events.at(-1);
   return (
     <div className="audit-controls">
@@ -317,13 +291,14 @@ function AuditControls({
         {!canApprove && (
           <p role="status">
             Final approval needs a confirmed header, saved owner and purpose,
-            passing business rules, a completed review, and an approver role.
+            passing business rules, and a completed review.
           </p>
         )}
         <p className="audit-disclaimer">
           Internal workflow approval is included in the exported brief only.
-          DataLens does not retain this record. It is not an audit opinion, legal
-          approval, certification, or assurance of source-data accuracy.
+          DataLens does not retain this record, and no one signs in, so it does
+          not identify who approved. It is not an audit opinion, legal approval,
+          certification, or assurance of source-data accuracy.
         </p>
       </div>
       <button
@@ -336,7 +311,7 @@ function AuditControls({
       <button
         className="primary"
         disabled={!canApprove}
-        title={canApprove ? "" : "Passing rules and an approver role are required"}
+        title={canApprove ? "" : "A passing rule check and a completed review are required"}
         onClick={() => onAudit("approve", "Internal workflow approval recorded.")}
       >
         Record internal approval

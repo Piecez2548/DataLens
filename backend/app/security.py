@@ -3,90 +3,19 @@ import hmac
 import json
 import os
 import time
-from base64 import urlsafe_b64decode
-from dataclasses import dataclass
-from typing import Annotated
 
-import httpx
-from fastapi import Depends, HTTPException
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-
-bearer = HTTPBearer(auto_error=False)
+from fastapi import HTTPException
 
 
-@dataclass(frozen=True)
-class UserContext:
-    id: str
-    email: str | None
-    role: str
-
-
-def auth_required() -> bool:
-    configured = os.environ.get("DATALENS_AUTH_REQUIRED")
-    if configured is not None:
-        return configured.lower() == "true"
-    # Hosting must fail closed when a deployment variable is accidentally omitted.
+def is_hosted() -> bool:
+    """True on Vercel, where unsafe development defaults must fail closed."""
     return bool(os.environ.get("VERCEL"))
-
-
-async def current_user(
-    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)],
-) -> UserContext:
-    if not auth_required():
-        return UserContext(id="local-development", email=None, role="developer")
-    if credentials is None or credentials.scheme.lower() != "bearer":
-        raise HTTPException(401, "Authentication is required.", headers={"WWW-Authenticate": "Bearer"})
-    url = os.environ.get("SUPABASE_URL", "").rstrip("/")
-    anon_key = os.environ.get("SUPABASE_ANON_KEY", "")
-    if not url or not anon_key:
-        raise HTTPException(503, "Authentication service is not configured.")
-    try:
-        async with httpx.AsyncClient(timeout=8) as client:
-            response = await client.get(
-                f"{url}/auth/v1/user",
-                headers={"apikey": anon_key, "Authorization": f"Bearer {credentials.credentials}"},
-            )
-    except httpx.HTTPError as exc:
-        raise HTTPException(503, "Authentication service is temporarily unavailable.") from exc
-    if response.status_code != 200:
-        raise HTTPException(401, "Your session is invalid or expired.", headers={"WWW-Authenticate": "Bearer"})
-    payload = response.json()
-    verified_factors = [factor for factor in payload.get("factors", []) if factor.get("status") == "verified"]
-    if verified_factors and _verified_token_claims(credentials.credentials).get("aal") != "aal2":
-        raise HTTPException(401, "Complete multi-factor authentication before using DataLens.")
-    role = str(payload.get("app_metadata", {}).get("role") or "authenticated")
-    allowed = {item.strip() for item in os.environ.get("DATALENS_ALLOWED_ROLES", "authenticated").split(",")}
-    if role not in allowed:
-        raise HTTPException(403, "Your account is not authorized for DataLens.")
-    return UserContext(id=str(payload["id"]), email=payload.get("email"), role=role)
-
-
-async def optional_user(
-    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)],
-) -> UserContext:
-    """Analysis is public; a presented session is still verified so its actor is recorded."""
-    if credentials is None and auth_required():
-        return UserContext(id="anonymous", email=None, role="anonymous")
-    return await current_user(credentials)
-
-
-def _verified_token_claims(token: str) -> dict:
-    """Read assurance claims only after Supabase verifies this exact token."""
-    try:
-        encoded = token.split(".")[1]
-        raw = urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4))
-        claims = json.loads(raw)
-    except (IndexError, UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
-        raise HTTPException(401, "Your session is invalid or expired.") from exc
-    if not isinstance(claims, dict):
-        raise HTTPException(401, "Your session is invalid or expired.")
-    return claims
 
 
 def sign_audit_event(event: dict) -> dict:
     secret = os.environ.get("DATALENS_AUDIT_SECRET")
     if not secret:
-        if auth_required():
+        if is_hosted():
             raise HTTPException(503, "Audit signing is not configured.")
         secret = "local-development-only"
     canonical = json.dumps(event, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
@@ -106,14 +35,12 @@ def verify_audit_event(event: dict) -> dict:
     return event
 
 
-def new_audit_event(action: str, actor: UserContext, analysis_id: str, details: dict | None = None) -> dict:
+def new_audit_event(action: str, analysis_id: str, details: dict | None = None) -> dict:
+    # Nobody signs in, so events record what happened and when, not who did it.
     return sign_audit_event(
         {
-            "event_version": 1,
+            "event_version": 2,
             "action": action,
-            "actor_id": actor.id,
-            "actor_email": actor.email,
-            "actor_role": actor.role,
             "analysis_id": analysis_id,
             "timestamp": int(time.time()),
             "details": details or {},

@@ -60,9 +60,6 @@ export interface Analysis {
   };
   governance: {
     analysis_id: string;
-    actor_id: string;
-    actor_email: string | null;
-    actor_role: string;
     retention: "request_only";
     server_storage: false;
     cache_control: "no-store";
@@ -85,9 +82,6 @@ export interface Analysis {
 export interface AuditEvent {
   event_version: number;
   action: string;
-  actor_id: string;
-  actor_email: string | null;
-  actor_role: string;
   analysis_id: string;
   timestamp: number;
   details: Record<string, unknown>;

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import {
   Aperture,
   ArrowUpRight,
@@ -8,8 +8,6 @@ import {
   Database,
   Download,
   FileSpreadsheet,
-  LogIn,
-  LogOut,
   Moon,
   Sun,
   Trash2,
@@ -17,13 +15,13 @@ import {
   X,
 } from "lucide-react";
 import type { Analysis, AuditEvent, BusinessRule } from "./types";
-import { SignInDialog, useAuth } from "./auth";
 import {
   GovernancePanel,
   UploadPolicy,
   type GovernanceInput,
 } from "./Governance";
 import { downloadExecutiveReport } from "./report";
+import ChartBoundary from "./ChartBoundary";
 const Charts = lazy(() => import("./Charts"));
 const MAX_UPLOAD_MB = import.meta.env.PROD ? 4 : 10;
 const tabs = ["Overview", "Data quality", "Explore", "Data preview"] as const;
@@ -46,15 +44,20 @@ const fmt = (n: number) =>
   n.toLocaleString(undefined, { maximumFractionDigits: 2 });
 
 export default function App() {
-  const { session, user, role, signedIn, signOut } = useAuth();
-  const [signInOpen, setSignInOpen] = useState(false);
-  // Only a fully verified session is sent; analysis itself needs none.
-  const authHeader: Record<string, string> =
-    signedIn && session ? { Authorization: `Bearer ${session.access_token}` } : {};
   const [data, setData] = useState<Analysis | null>(null);
   const [tab, setTab] = useState<(typeof tabs)[number]>("Overview");
   const [selected, setSelected] = useState("");
   const [busy, setBusy] = useState(false);
+  const [slow, setSlow] = useState(false);
+  // Serverless cold starts make the first request slow; explain the wait.
+  useEffect(() => {
+    if (!busy) return;
+    const timer = window.setTimeout(() => setSlow(true), 3500);
+    return () => {
+      window.clearTimeout(timer);
+      setSlow(false);
+    };
+  }, [busy]);
   const [error, setError] = useState("");
   const [dark, setDark] = useState(false);
   const [page, setPage] = useState(0);
@@ -120,7 +123,6 @@ export default function App() {
       const response = await fetch(`/api/analyze?header_mode=${headerMode}`, {
         method: "POST",
         body,
-        headers: authHeader,
       });
       if (!response.ok) {
         const e = await response.json().catch(() => ({
@@ -171,10 +173,7 @@ export default function App() {
     try {
       const response = await fetch(`/api/audit/${action}`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...authHeader,
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           analysis_id: data.governance.analysis_id,
           analysis_event: data.audit_event,
@@ -231,7 +230,7 @@ export default function App() {
         <a className="brand" href="#">
           <Aperture size={30} />
           <span>
-            DataLens<span className="version"> / 0.7.1</span>
+            DataLens<span className="version"> / 0.8.0</span>
           </span>
         </a>
         <a
@@ -256,7 +255,7 @@ export default function App() {
         <div className="side-bottom">
           A clearer view of your data.
           <br />
-          <span>Simple analysis · v0.7.1</span>
+          <span>Simple analysis · v0.8.0</span>
         </div>
       </aside>
       <main>
@@ -273,12 +272,6 @@ export default function App() {
             Workspace <span>/</span> Dataset explorer
           </div>
           <div className="header-actions">
-            {signedIn && user && (
-              <div className="user-chip">
-                <strong>{user.email}</strong>
-                <span>{role}</span>
-              </div>
-            )}
             <button
               className="icon-button"
               aria-label={dark ? "Use light theme" : "Use dark theme"}
@@ -286,15 +279,6 @@ export default function App() {
             >
               {dark ? <Sun size={19} /> : <Moon size={19} />}
             </button>
-            {session ? (
-              <button className="icon-button" aria-label="Sign out" onClick={() => void signOut()}>
-                <LogOut size={18} />
-              </button>
-            ) : !signedIn && (
-              <button className="report-button" onClick={() => setSignInOpen(true)}>
-                <LogIn size={15} /> Sign in
-              </button>
-            )}
           </div>
         </header>
         <div className="content">
@@ -336,6 +320,12 @@ export default function App() {
               <button aria-label="Dismiss error" onClick={() => setError("")}>
                 <X size={18} />
               </button>
+            </div>
+          )}
+          {busy && slow && (
+            <div role="status" className="slow-notice">
+              Still working. The first analysis after a quiet period can take up to
+              about 15 seconds while the service starts; later ones take under a second.
             </div>
           )}
           <div aria-live="polite" className="sr-only">
@@ -546,9 +536,9 @@ export default function App() {
                     </button>
                   </div>
                   {column && (
-                    <Suspense fallback={<p>Loading charts…</p>}>
+                    <ChartBoundary><Suspense fallback={<p>Loading charts…</p>}>
                       <Charts data={data} column={column} />
-                    </Suspense>
+                    </Suspense></ChartBoundary>
                   )}
                   {lastFile && (
                     <UploadPolicy
@@ -587,11 +577,7 @@ export default function App() {
                     rules={businessRules}
                     auditEvents={auditEvents}
                     busy={busy}
-                    signedIn={signedIn}
-                    onSignIn={() => setSignInOpen(true)}
                     canApprove={
-                      signedIn &&
-                      ["admin", "approver"].includes(role) &&
                       data.executive.status === "Ready for exploration" &&
                       data.business_rules.configured &&
                       data.business_rules.passed &&
@@ -701,9 +687,9 @@ export default function App() {
                       ))}
                     </div>
                   )}
-                  <Suspense fallback={<p>Loading charts…</p>}>
+                  <ChartBoundary><Suspense fallback={<p>Loading charts…</p>}>
                     <Charts data={data} column={column} />
-                  </Suspense>
+                  </Suspense></ChartBoundary>
                 </>
               )}
               {tab === "Data preview" && (
@@ -774,9 +760,6 @@ export default function App() {
           </footer>
         </div>
       </main>
-      {signInOpen && !signedIn && (
-        <SignInDialog onClose={() => setSignInOpen(false)} />
-      )}
     </div>
   );
 }

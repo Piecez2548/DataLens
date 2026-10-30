@@ -76,3 +76,38 @@ test("keeps product identity and the Nexus return path on mobile", async ({ page
   );
   await expect(page.getByRole("heading", { name: /Good insights/ })).toBeVisible();
 });
+
+test("has no sign-in step and lets anyone review and approve a clean dataset", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("button", { name: /sign in|sign out/i })).toHaveCount(0);
+  await expect(page.getByText(/Sign in with your Nexus account/)).toHaveCount(0);
+
+  await page.getByLabel(/I am allowed to analyze this file/).check();
+  await page.getByLabel("Upload CSV file").setInputFiles({
+    name: "clean.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from("region,amount\nTH,10\nUS,20\nJP,30\n"),
+  });
+  await expect(page.getByText("Analysis complete")).toBeVisible();
+  await page.getByRole("button", { name: "This is correct" }).click();
+  await expect(page.getByText("Confirm how row 1 was read")).toHaveCount(0);
+
+  await page.getByText("Prepare an executive report").click();
+  await page.getByLabel(/Data owner/).fill("Data Operations");
+  await page.getByLabel(/Data classification/).selectOption("internal");
+  await page.getByLabel(/Report purpose/).fill("Approval check");
+  await page.getByRole("button", { name: "Add report details" }).click();
+  await expect(page.getByText("Details added")).toBeVisible();
+
+  await page.getByText("Advanced checks and approval").click();
+  await page.getByText("Set business rules", { exact: true }).click();
+  await page.locator(".rule-row").filter({ hasText: "amount" }).getByLabel("Minimum").fill("0");
+  await page.getByRole("button", { name: "Check these rules" }).click();
+  await expect(page.getByText("All business rules passed.")).toBeVisible();
+
+  await page.getByRole("button", { name: "Mark as reviewed" }).click();
+  await expect(page.getByText(/2 event\(s\).*analysis.reviewed/)).toBeVisible();
+  await page.getByRole("button", { name: "Record internal approval" }).click();
+  await expect(page.getByText(/3 event\(s\).*analysis.approved/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Export approved brief" })).toBeVisible();
+});

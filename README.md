@@ -8,10 +8,10 @@ DataLens is a deterministic CSV profiling workspace for governed, reviewable dat
 | Repository | https://github.com/Piecez2548/DataLens |
 | Project Hub | https://nexus-lemon-eight-32.vercel.app/projects |
 
-The platform supports authenticated analysis, structural quality metrics, business rules, review workflows, signed metadata events, and an exportable executive brief. It does not certify that a dataset is accurate, complete, lawful, or suitable for a particular business decision; the accountable data owner remains responsible for those determinations.
+The platform supports account-free analysis, structural quality metrics, business rules, review workflows, signed metadata events, and an exportable executive brief. It does not certify that a dataset is accurate, complete, lawful, or suitable for a particular business decision; the accountable data owner remains responsible for those determinations.
 ## v0.7.1
 
-- Supabase authentication with allowlisted roles and a shared Nexus account.
+- No sign-in: analysis, review, and approval work without an account. Only Nexus Main uses accounts.
 - One-step CSV upload with source details, business rules, and approval available after analysis.
 - UTF-8 CSV preview, schema inference, governed names and type overrides.
 - Missing cells, duplicates, numeric statistics, IQR outliers, Pearson correlations, and adaptive charts.
@@ -44,11 +44,10 @@ In another terminal:
 ```powershell
 cd frontend
 npm ci
-$env:VITE_AUTH_BYPASS="true"
 npm run dev
 ```
 
-The bypass works only in Vite development mode. Production requires `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `DATALENS_AUTH_REQUIRED=true`, `DATALENS_ALLOWED_ROLES`, `DATALENS_ALLOWED_ORIGINS`, and a strong `DATALENS_AUDIT_SECRET`.
+There is no authentication to configure. Production needs only `DATALENS_AUDIT_SECRET` (a strong random value; the API answers 503 on Vercel without it) and, if the frontend is served from another origin, `DATALENS_ALLOWED_ORIGINS`. Old `VITE_SUPABASE_*`, `SUPABASE_*`, `DATALENS_AUTH_REQUIRED` and `DATALENS_ALLOWED_ROLES` variables are no longer read and can be deleted from the Vercel project.
 
 `samples/demo.csv` is a fictional test fixture. It must never be presented as business evidence.
 
@@ -56,12 +55,10 @@ The bypass works only in Vite development mode. Production requires `VITE_SUPABA
 
 ```text
 Browser
-  ├─ Supabase identity shared with Nexus; separate origin session
   ├─ React + TypeScript + Tailwind + Recharts
   └─ multipart CSV + governance/rules
-                 │ HTTPS + bearer token
+                 │ HTTPS
 FastAPI on Vercel
-  ├─ token verification and role authorization
   ├─ bounded request and strict CSV parsing
   ├─ Pandas/NumPy deterministic profiler
   ├─ business-rule evaluation
@@ -73,10 +70,10 @@ CSV bytes are released after the request; no application database stores them. F
 
 Key files:
 
-- `frontend/src/auth.tsx`: session gate and Nexus account sign-in.
+- `frontend/src/staleChunkReload.ts`: one automatic reload when a deploy removes a lazy chunk.
 - `frontend/src/Governance.tsx`: declaration, rules, review, and approval controls.
 - `frontend/src/report.ts`: local executive brief generation.
-- `backend/app/security.py`: token validation, role checks, and audit signing.
+- `backend/app/security.py`: audit-event signing and verification.
 - `backend/app/analysis.py`: pure deterministic analysis engine.
 - `backend/app/main.py`: request limits, governance validation, and API lifecycle.
 
@@ -94,13 +91,13 @@ Let `R` be rows, `C` columns, `M` missing cells, `P = R×C−M`, `T` type mismat
 
 Only empty or whitespace-only cells count as missing. Literal `NA`, `null`, and `nan` are retained. Numeric statistics exclude missing, mismatched, and nonfinite values. Standard deviation uses `ddof=0`; outliers use 1.5×IQR; correlations need at least three complete finite pairs and do not establish causation.
 
-Business rules are separate from structural quality. A dataset can have a high quality score and still fail a required field, domain, minimum, or maximum rule. Approval is enabled only for an approver/admin/developer role when the structural status is ready and configured rules pass.
+Business rules are separate from structural quality. A dataset can have a high quality score and still fail a required field, domain, minimum, or maximum rule. Approval is enabled only after a review is recorded, when the structural status is ready, the header is confirmed, and configured rules pass.
 
 Review and approval events are signed session records carried into the exported brief. DataLens does not persist them. Internal workflow approval is not an audit opinion, legal approval, certification, or assurance of source-data accuracy. An organization that needs a system of record must add approved durable audit storage and retention controls.
 
 ## Security and data handling
 
-- Production analysis endpoints require a valid Supabase bearer token and an allowed role.
+- No accounts: anyone can analyze, review, and approve. Hosted requests must attest that the file is non-personal, and approval records do not identify a person.
 - HTTPS is enforced by Vercel; HSTS, CSP, frame blocking, referrer, permissions, and MIME-sniffing headers are configured.
 - Uploads are limited to 4 MiB in production, 100,000 rows, and 100 columns.
 - Responses use `Cache-Control: no-store`; CSV contents are not intentionally persisted by application code. Platform-level transient handling must be confirmed with the hosting provider before confidential use.
@@ -124,7 +121,7 @@ cd ../backend
 .venv/Scripts/python -m pytest -q
 ```
 
-CI also runs `npm audit --audit-level=high`, `pip-audit`, and the browser workflow. A scheduled production smoke test verifies availability, auth enforcement, and security headers without uploading business data.
+CI also runs `npm audit --audit-level=high`, `pip-audit`, and the browser workflow. A scheduled production smoke test verifies availability, an unauthenticated analysis round trip, and security headers without uploading business data.
 
 ## Demo evidence
 
@@ -134,7 +131,7 @@ No approved product screenshots are checked into this repository. Demonstrations
 
 - Operator privacy notice, ROPA, DPA/subprocessor review, transfer assessment, DSAR and incident workflows, followed by Thai counsel/DPO sign-off before personal-data use.
 - Durable organization audit storage with customer-managed retention and verification keys.
-- SAML/OIDC enterprise SSO, SCIM, and group-to-role mapping.
+- Identity, SSO, and role-based approval, if the service is ever used for governed workflows.
 - Approved encrypted object storage for files larger than 4 MiB.
 - Saved policy templates, custom missing markers, delimiters, encodings, XLSX, and time-series analysis.
 

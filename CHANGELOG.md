@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.0 — No sign-in (2026-10-30)
+
+- Remove the Nexus/Supabase login. Analysis, review, and approval no longer need an account; only Nexus Main uses accounts.
+- Audit events and the exported brief no longer name an actor; approval no longer needs an approver role.
+- Drop the Supabase client, token verification, and httpx/httpcore/certifi from the production bundle.
+- Explain slow first requests after a serverless cold start, reload once when a deploy removes a lazy chunk, and enlarge phone touch targets.
+- Add robots.txt and a favicon; clear the certifi and dev-tool dependency advisories.
+
 ## 0.6.1 — Release reliability addendum (2026-09-08)
 
 - Declare Uvicorn as a runtime dependency so local browser validation and CI start the FastAPI service deterministically.

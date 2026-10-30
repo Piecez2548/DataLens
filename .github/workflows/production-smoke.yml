@@ -9,34 +9,45 @@ jobs:
   smoke:
     runs-on: ubuntu-latest
     steps:
-      - name: Verify health, auth enforcement, and security headers
+      - name: Verify health, public analysis, and security headers
         shell: python
         run: |
           import json
-          import urllib.error
           import urllib.request
 
           origin = "https://datalens-kappa-one.vercel.app"
           with urllib.request.urlopen(f"{origin}/api/health", timeout=30) as response:
               health = json.load(response)
               assert health["status"] == "ok"
-              assert health["authentication_required"] is True
+              assert "authentication_required" not in health
               headers = {key.lower(): value for key, value in response.headers.items()}
               assert "no-store" in headers["cache-control"]
               assert headers["x-content-type-options"] == "nosniff"
 
+          # Analysis is public: a small CSV with the data attestation must succeed without credentials.
+          boundary = "datalens-smoke"
+          schema = json.dumps({"governance": {"authorized_to_process": True}})
+          body = (
+              f"--{boundary}\r\n"
+              'Content-Disposition: form-data; name="file"; filename="smoke.csv"\r\n'
+              "Content-Type: text/csv\r\n\r\n"
+              "x,y\n1,2\n3,4\r\n"
+              f"--{boundary}\r\n"
+              'Content-Disposition: form-data; name="schema"\r\n\r\n'
+              f"{schema}\r\n"
+              f"--{boundary}--\r\n"
+          ).encode()
           request = urllib.request.Request(
-              f"{origin}/api/audit/review",
-              data=b"{}",
-              headers={"Content-Type": "application/json"},
+              f"{origin}/api/analyze",
+              data=body,
+              headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
               method="POST",
           )
-          try:
-              urllib.request.urlopen(request, timeout=30)
-          except urllib.error.HTTPError as error:
-              assert error.code == 401
-          else:
-              raise AssertionError("Unauthenticated review was not rejected")
+          with urllib.request.urlopen(request, timeout=60) as response:
+              result = json.load(response)
+              assert response.status == 200
+              assert result["rows"] == 2
+              assert result["audit_event"]["signature_algorithm"] == "HMAC-SHA256"
 
           with urllib.request.urlopen(origin, timeout=30) as response:
               headers = {key.lower(): value for key, value in response.headers.items()}

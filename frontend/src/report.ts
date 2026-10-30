@@ -60,7 +60,7 @@ export function downloadExecutiveReport(data: Analysis, auditEvents: AuditEvent[
   const auditRows = auditEvents
     .map(
       (event) =>
-        `<tr><td>${escapeHtml(event.action)}</td><td>${escapeHtml(new Date(event.timestamp * 1000).toISOString())}</td><td>${escapeHtml(event.actor_email || event.actor_id)} (${escapeHtml(event.actor_role)})</td><td><code>${escapeHtml(event.signature)}</code></td></tr>`,
+        `<tr><td>${escapeHtml(event.action)}</td><td>${escapeHtml(new Date(event.timestamp * 1000).toISOString())}</td><td><code>${escapeHtml(event.signature)}</code></td></tr>`,
     )
     .join("");
   const html = `<!doctype html>
@@ -78,7 +78,7 @@ export function downloadExecutiveReport(data: Analysis, auditEvents: AuditEvent[
 <section><h2>Analytical signals</h2>${signals}</section>
 ${outlierRows ? `<section><h2>Potential outliers</h2><table><thead><tr><th>Column</th><th>Count</th><th>Q1</th><th>Q3</th></tr></thead><tbody>${outlierRows}</tbody></table></section>` : ""}
 ${ruleRows ? `<section><h2>Business validation rules</h2><table><thead><tr><th>Column</th><th>Rule</th><th>Checked</th><th>Violations</th></tr></thead><tbody>${ruleRows}</tbody></table></section>` : ""}
-<section><h2>Session review record</h2>${auditRows ? `<table><thead><tr><th>Event</th><th>UTC timestamp</th><th>Actor</th><th>Full service signature</th></tr></thead><tbody>${auditRows}</tbody></table>` : "<p>No review event was recorded.</p>"}<p>The service signature protects the event metadata while the signing key remains controlled. This downloaded HTML is not centrally retained and can be edited after download, so it is not a durable or independently verifiable audit ledger.</p></section>
+<section><h2>Session review record</h2>${auditRows ? `<table><thead><tr><th>Event</th><th>UTC timestamp</th><th>Full service signature</th></tr></thead><tbody>${auditRows}</tbody></table>` : "<p>No review event was recorded.</p>"}<p>The service signature protects the event metadata while the signing key remains controlled. This downloaded HTML is not centrally retained and can be edited after download, so it is not a durable or independently verifiable audit ledger.</p></section>
 <section><h2>Decision note</h2><p class="method">${escapeHtml(data.executive.scope_note)} Correlations use complete finite numeric pairs and do not establish causation. Potential outliers use the 1.5×IQR rule. Validate findings against business definitions before making material decisions.</p></section>
 </main></body></html>`;
   const blob = new Blob([html], { type: "text/html;charset=utf-8" });

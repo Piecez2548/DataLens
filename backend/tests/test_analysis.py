@@ -1,5 +1,4 @@
 import json
-from base64 import urlsafe_b64encode
 
 import pytest
 from fastapi.testclient import TestClient
@@ -184,38 +183,44 @@ def test_business_rules_are_auditable_and_block_executive_readiness():
     assert result["executive"]["status"] == "Action required"
 
 
-def test_analysis_is_public_when_enterprise_auth_is_enabled(monkeypatch):
-    monkeypatch.setenv("DATALENS_AUTH_REQUIRED", "true")
+def test_analysis_needs_no_account_and_events_carry_no_identity(monkeypatch):
     monkeypatch.setenv("DATALENS_AUDIT_SECRET", "test-only-secret")
     schema = json.dumps({"governance": {"authorized_to_process": True}})
     response = TestClient(app).post(
         "/api/analyze",
         files={"file": ("demo.csv", b"x\n1\n"), "schema": (None, schema)},
     )
+    body = response.json()
     assert response.status_code == 200
-    assert response.json()["governance"]["actor_role"] == "anonymous"
     assert response.headers["cache-control"] == "no-store, max-age=0"
+    assert not any(key.startswith("actor") for key in body["governance"])
+    assert not any(key.startswith("actor") for key in body["audit_event"])
 
 
-def test_review_and_approval_require_a_session_when_enterprise_auth_is_enabled(monkeypatch):
-    monkeypatch.setenv("DATALENS_AUTH_REQUIRED", "true")
+def test_health_reports_no_authentication_requirement():
+    assert TestClient(app).get("/api/health").json() == {"status": "ok", "version": app.version}
+
+
+def test_hosted_analysis_requires_the_non_personal_data_attestation(monkeypatch):
+    monkeypatch.setenv("VERCEL", "1")
     monkeypatch.setenv("DATALENS_AUDIT_SECRET", "test-only-secret")
     client = TestClient(app)
+    refused = client.post("/api/analyze", files={"file": ("demo.csv", b"x\n1\n")})
+    assert refused.status_code == 400
     schema = json.dumps({"governance": {"authorized_to_process": True}})
-    analysis = client.post(
+    accepted = client.post("/api/analyze", files={"file": ("demo.csv", b"x\n1\n"), "schema": (None, schema)})
+    assert accepted.status_code == 200
+
+
+def test_hosted_deployment_fails_closed_without_an_audit_secret(monkeypatch):
+    monkeypatch.setenv("VERCEL", "1")
+    monkeypatch.delenv("DATALENS_AUDIT_SECRET", raising=False)
+    schema = json.dumps({"governance": {"authorized_to_process": True}})
+    response = TestClient(app).post(
         "/api/analyze",
         files={"file": ("demo.csv", b"x\n1\n"), "schema": (None, schema)},
-    ).json()
-    payload = {"analysis_id": analysis["governance"]["analysis_id"], "analysis_event": analysis["audit_event"]}
-    assert client.post("/api/audit/review", json=payload).status_code == 401
-    assert client.post("/api/audit/approve", json=payload).status_code == 401
-
-
-def test_hosted_deployment_fails_closed_when_auth_flag_is_missing(monkeypatch):
-    monkeypatch.delenv("DATALENS_AUTH_REQUIRED", raising=False)
-    monkeypatch.setenv("VERCEL", "1")
-    response = TestClient(app).post("/api/audit/review", json={"analysis_id": "a" * 64, "analysis_event": {}})
-    assert response.status_code == 401
+    )
+    assert response.status_code == 503
 
 
 def test_review_and_approval_require_bound_signed_evidence():
@@ -275,99 +280,6 @@ def test_approval_rejects_incomplete_analysis_even_with_valid_service_event():
     review = client.post("/api/audit/review", json=payload).json()
     response = client.post("/api/audit/approve", json={**payload, "review_event": review})
     assert response.status_code == 409
-
-
-def test_valid_supabase_session_is_verified_and_actor_is_recorded(monkeypatch):
-    class Response:
-        status_code = 200
-
-        @staticmethod
-        def json():
-            return {
-                "id": "user-123",
-                "email": "analyst@example.com",
-                "app_metadata": {"role": "analyst"},
-            }
-
-    class Client:
-        def __init__(self, **_kwargs):
-            pass
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *_args):
-            return None
-
-        async def get(self, *_args, **_kwargs):
-            return Response()
-
-    monkeypatch.setenv("DATALENS_AUTH_REQUIRED", "true")
-    monkeypatch.setenv("SUPABASE_URL", "https://project.supabase.co")
-    monkeypatch.setenv("SUPABASE_ANON_KEY", "public-key")
-    monkeypatch.setenv("DATALENS_ALLOWED_ROLES", "analyst")
-    monkeypatch.setenv("DATALENS_AUDIT_SECRET", "test-only-secret")
-    monkeypatch.setattr("app.security.httpx.AsyncClient", Client)
-    schema = {
-            "governance": {
-                "owner": "Finance",
-                "purpose": "Monthly review",
-                "classification": "internal",
-                "authorized_to_process": True,
-            }
-    }
-    response = TestClient(app).post(
-        "/api/analyze",
-        headers={"Authorization": "Bearer valid-token"},
-        files={"file": ("demo.csv", b"amount\n10\n")},
-        data={"schema": json.dumps(schema)},
-    )
-    assert response.status_code == 200
-    assert response.json()["governance"]["actor_id"] == "user-123"
-    assert response.json()["governance"]["actor_role"] == "analyst"
-
-
-def test_enrolled_mfa_rejects_password_only_session(monkeypatch):
-    class Response:
-        status_code = 200
-
-        @staticmethod
-        def json():
-            return {
-                "id": "user-123",
-                "app_metadata": {"role": "analyst"},
-                "factors": [{"status": "verified", "factor_type": "totp"}],
-            }
-
-    class Client:
-        def __init__(self, **_kwargs):
-            pass
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *_args):
-            return None
-
-        async def get(self, *_args, **_kwargs):
-            return Response()
-
-    monkeypatch.setenv("DATALENS_AUTH_REQUIRED", "true")
-    monkeypatch.setenv("SUPABASE_URL", "https://project.supabase.co")
-    monkeypatch.setenv("SUPABASE_ANON_KEY", "public-key")
-    monkeypatch.setenv("DATALENS_ALLOWED_ROLES", "analyst")
-    monkeypatch.setattr("app.security.httpx.AsyncClient", Client)
-    claims = urlsafe_b64encode(json.dumps({"aal": "aal1"}).encode()).decode().rstrip("=")
-    token = f"header.{claims}.signature"
-
-    response = TestClient(app).post(
-        "/api/analyze",
-        headers={"Authorization": f"Bearer {token}"},
-        files={"file": ("demo.csv", b"amount\n10\n")},
-    )
-
-    assert response.status_code == 401
-    assert "multi-factor" in response.json()["detail"]
 
 
 def test_numeric_business_rule_rejects_a_text_column():
