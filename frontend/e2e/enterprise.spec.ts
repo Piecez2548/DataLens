@@ -224,7 +224,7 @@ test("switches the interface and executive brief to Thai", async ({ page }) => {
   await page.getByRole("button", { name: "เปลี่ยนเป็นภาษาไทย" }).click();
   await expect(page.getByRole("heading", { name: "การค้นพบครั้งต่อไปเริ่มที่นี่" })).toBeVisible();
   await page.getByLabel(/ฉันได้รับอนุญาตให้วิเคราะห์ไฟล์นี้/).check();
-  await page.getByLabel("Upload CSV file").setInputFiles({
+  await page.getByLabel("อัปโหลดไฟล์ CSV").setInputFiles({
     name: "gaps.csv",
     mimeType: "text/csv",
     buffer: Buffer.from("name,amount\nA,10\nB,\nC,20\n"),
@@ -259,4 +259,20 @@ test("opens the executive brief for printing as PDF", async ({ page }) => {
   await popup.waitForLoadState("load");
   await expect(popup.getByRole("heading", { name: /Draft structural profile/ })).toBeVisible();
   await expect.poll(() => page.evaluate(() => (window as unknown as { __printed: boolean }).__printed)).toBe(true);
+});
+
+test("sample files demonstrate every input type without uploading anything", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Orders workbook (Excel, 2 sheets)" }).click();
+  await expect(page.getByText("This workbook has 2 sheets")).toBeVisible();
+  await expect(page.getByText("Row 3 looks like the column names")).toBeVisible();
+  await page.getByRole("button", { name: "Use row 3 as headers" }).click();
+  await expect(page.getByText("30 rows · 6 columns")).toBeVisible();
+
+  await page.getByRole("button", { name: "Clear dataset" }).click();
+  await page.getByRole("button", { name: "Thai sales (CSV)" }).click();
+  await expect(page.getByText("60 rows · 5 columns")).toBeVisible();
+  await page.getByRole("button", { name: "Clear dataset" }).click();
+  await page.getByRole("button", { name: "Orders records (JSON)" }).click();
+  await expect(page.getByText("25 rows · 6 columns")).toBeVisible();
 });

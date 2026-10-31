@@ -135,6 +135,7 @@ export default function App() {
     file: File,
     headerMode: "auto" | "present" | "absent",
     schema?: SchemaOptions,
+    attested: boolean = authorized,
   ): Promise<Analysis> {
     const body = new FormData();
     body.append("file", file);
@@ -142,7 +143,7 @@ export default function App() {
       "schema",
       JSON.stringify({
         ...schema,
-        governance: { ...governance, authorized_to_process: authorized },
+        governance: { ...governance, authorized_to_process: attested },
         business_rules: schema?.business_rules ?? businessRules,
         missing_markers: schema?.missing_markers ?? parseMarkers(markerText),
         sheet: schema?.sheet,
@@ -208,9 +209,10 @@ export default function App() {
     file: File,
     headerMode: "auto" | "present" | "absent" = "auto",
     schema?: SchemaOptions,
+    attested: boolean = authorized,
   ) {
     if (busy) return;
-    if (!authorized) {
+    if (!attested) {
       setError("Confirm that you are allowed to upload this file before analysis.");
       return;
     }
@@ -223,11 +225,16 @@ export default function App() {
     try {
       const fresh = file !== lastFile;
       const sheet = schema?.sheet ?? (fresh ? undefined : sheetName || undefined);
-      const result = await requestAnalysis(file, headerMode, {
-        ...schema,
-        sheet,
-        ...(fresh ? { business_key: [], group_by: null } : {}),
-      });
+      const result = await requestAnalysis(
+        file,
+        headerMode,
+        {
+          ...schema,
+          sheet,
+          ...(fresh ? { business_key: [], group_by: null } : {}),
+        },
+        attested,
+      );
       setSheetName(result.provenance.sheet ?? "");
       if (schema?.business_key) setKeyColumns(schema.business_key);
       if (fresh || schema?.sheet || schema?.header_row) {
@@ -261,6 +268,18 @@ export default function App() {
     } finally {
       setBusy(false);
       if (input.current) input.current.value = "";
+    }
+  }
+  async function trySample(path: string, type: string) {
+    if (busy) return;
+    try {
+      const response = await fetch(`/samples/${path}`);
+      if (!response.ok) throw new Error("sample");
+      const blob = await response.blob();
+      setAuthorized(true);
+      await upload(new File([blob], path, { type }), "auto", undefined, true);
+    } catch {
+      setError("The sample file could not be loaded. Please try again.");
     }
   }
   async function recordAudit(action: "review" | "approve", note: string) {
@@ -357,7 +376,7 @@ export default function App() {
           <a
             className="mobile-home"
             href="https://nexus-lemon-eight-32.vercel.app/projects"
-            aria-label="Back to Nexus All"
+            aria-label={t("Back to Nexus All")}
           >
             <Aperture size={22} aria-hidden="true" />
             <span>DataLens</span>
@@ -373,7 +392,7 @@ export default function App() {
             </button>
             <button
               className="icon-button"
-              aria-label={dark ? "Use light theme" : "Use dark theme"}
+              aria-label={t(dark ? "Use light theme" : "Use dark theme")}
               onClick={() => setDark(!dark)}
             >
               {dark ? <Sun size={19} /> : <Moon size={19} />}
@@ -402,7 +421,7 @@ export default function App() {
             type="file"
             accept=".csv,.xlsx,.json,.jsonl,.ndjson,text/csv,application/json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             className="sr-only"
-            aria-label="Upload CSV file"
+            aria-label={t("Upload CSV file")}
             onChange={(e) => {
               const f = e.target.files?.[0];
               if (f) void upload(f);
@@ -413,7 +432,7 @@ export default function App() {
             type="file"
             accept=".csv,.xlsx,.json,.jsonl,.ndjson,text/csv,application/json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             className="sr-only"
-            aria-label="Choose a file to compare"
+            aria-label={t("Choose a file to compare")}
             onChange={(e) => {
               const f = e.target.files?.[0];
               if (f) void compareWith(f);
@@ -422,7 +441,7 @@ export default function App() {
           {error && (
             <div role="alert" className="error">
               {tError(error)}
-              <button aria-label="Dismiss error" onClick={() => setError("")}>
+              <button aria-label={t("Dismiss error")} onClick={() => setError("")}>
                 <X size={18} />
               </button>
             </div>
@@ -461,6 +480,26 @@ export default function App() {
                   checked={authorized}
                   onChange={(event) => setAuthorized(event.target.checked)}
                 />{t("I am allowed to analyze this file, and it contains no personal or sensitive data.")}</label>
+              <div className="samples" role="group" aria-label={t("Try a sample")}>
+                <strong>{t("Try a sample")}</strong>
+                <span>{t("Fictional data made for this demo. Nothing of yours is uploaded.")}</span>
+                <div>
+                  <button disabled={busy} onClick={() => void trySample("sales-th.csv", "text/csv")}>
+                    {t("Thai sales (CSV)")}
+                  </button>
+                  <button
+                    disabled={busy}
+                    onClick={() =>
+                      void trySample("orders.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                    }
+                  >
+                    {t("Orders workbook (Excel, 2 sheets)")}
+                  </button>
+                  <button disabled={busy} onClick={() => void trySample("orders.json", "application/json")}>
+                    {t("Orders records (JSON)")}
+                  </button>
+                </div>
+              </div>
               <label className="header-row-field">{t("Header row (optional)")}<input
                   type="number"
                   min={1}
@@ -543,7 +582,7 @@ export default function App() {
                   })}
                 </small>
               </div>
-              <nav className="tabs" aria-label="Dataset views">
+              <nav className="tabs" aria-label={t("Dataset views")}>
                 {(other ? [...baseTabs, "Compare" as const] : [...baseTabs]).map((name) => (
                   <button
                     key={name}
@@ -566,7 +605,7 @@ export default function App() {
                         <p>{t("Each sheet is analyzed on its own. Choose the sheet to analyze.")}</p>
                       </div>
                       <select
-                        aria-label="Worksheet"
+                        aria-label={t("Worksheet")}
                         value={data.provenance.sheet ?? ""}
                         disabled={busy || !lastFile}
                         onChange={(event) => {
@@ -647,8 +686,8 @@ export default function App() {
                         <strong>{t("Confirm how row 1 was read")}</strong>
                         <p>
                           {data.header.used
-                            ? `We treated row 1 as column names: ${data.columns.slice(0, 3).map((item) => item.name).join(", ")}.`
-                            : `We kept row 1 as data and generated neutral column names.`}
+                            ? tf("We treated row 1 as column names: {names}.", { names: data.columns.slice(0, 3).map((item) => item.name).join(", ") })
+                            : t("We kept row 1 as data and generated neutral column names.")}
                         </p>
                       </div>
                       <button
@@ -659,7 +698,7 @@ export default function App() {
                         disabled={busy || !lastFile}
                         onClick={() => lastFile && void upload(lastFile, data.header.used ? "absent" : "present")}
                       >
-                        {data.header.used ? "Row 1 is data" : "Row 1 is headers"}
+                        {t(data.header.used ? "Row 1 is data" : "Row 1 is headers")}
                       </button>
                     </section>
                   )}
@@ -728,7 +767,7 @@ export default function App() {
                       [
                         t("Missing cells"),
                         fmt(data.missing),
-                        `${fmt((data.missing / (data.rows * data.column_count)) * 100)}% of all cells`,
+                        tf("{pct}% of all cells", { pct: fmt((data.missing / (data.rows * data.column_count)) * 100) }),
                       ],
                       [
                         t("Duplicate rows"),
@@ -888,11 +927,11 @@ export default function App() {
                             <tr key={c.name}>
                               <td>{c.name}</td>
                               <td>
-                                <span className="badge">{c.type}</span>
-                                {c.format && <span className="badge">{c.format}</span>}
+                                <span className="badge">{t(c.type)}</span>
+                                {c.format && <span className="badge">{t(c.format)}</span>}
                                 {c.pattern && (
                                   <span className="badge">
-                                    {c.pattern === "thai_national_id" ? "Thai ID (personal data)" : "Thai phone (personal data)"}
+                                    {t(c.pattern === "thai_national_id" ? "Thai ID (personal data)" : "Thai phone (personal data)")}
                                   </span>
                                 )}
                               </td>
@@ -917,7 +956,7 @@ export default function App() {
                       <p>{t("Charts adapt to the inferred data type.")}</p>
                     </div>
                     <select
-                      aria-label="Column to explore"
+                      aria-label={t("Column to explore")}
                       value={selected}
                       onChange={(e) => setSelected(e.target.value)}
                     >
@@ -930,7 +969,7 @@ export default function App() {
                     <div className="stats-strip">
                       {Object.entries(column.stats).map(([k, v]) => (
                         <div key={k}>
-                          <span>{k}</span>
+                          <span>{t(k)}</span>
                           <strong>{fmt(v)}</strong>
                         </div>
                       ))}
@@ -947,8 +986,7 @@ export default function App() {
                     <div>
                       <h2>{t("Data preview")}</h2>
                       <p>
-                        First {data.preview.length} of {fmt(data.rows)} rows ·
-                        trimmed values · blanks shown as —
+                        {tf("First {shown} of {total} rows · trimmed values · blanks shown as —", { shown: data.preview.length, total: fmt(data.rows) })}
                       </p>
                     </div>
                   </div>
@@ -960,7 +998,7 @@ export default function App() {
                           {data.columns.map((c) => (
                             <th key={c.name}>
                               {c.name}
-                              <small>{c.type}</small>
+                              <small>{t(c.type)}</small>
                             </th>
                           ))}
                         </tr>
@@ -985,7 +1023,7 @@ export default function App() {
                   </div>
                   <div className="pagination">
                     <span>
-                      Page {page + 1} of {Math.ceil(data.preview.length / 10)}
+                      {tf("Page {page} of {pages}", { page: page + 1, pages: Math.ceil(data.preview.length / 10) })}
                     </span>
                     <button disabled={!page} onClick={() => setPage(page - 1)}>{t("Previous")}</button>
                     <button
@@ -1049,7 +1087,7 @@ function SchemaSetup({
           <small>{t("Name columns and confirm how each field should be treated.")}</small>
         </span>
         <span>
-          {data.header.configured_names ? "Configured" : "Review schema"}
+          {t(data.header.configured_names ? "Configured" : "Review schema")}
         </span>
       </summary>
       <div className="schema-grid">
@@ -1071,7 +1109,7 @@ function SchemaSetup({
             >
               {schemaTypes.map((type) => (
                 <option value={type} key={type}>
-                  {type === "auto" ? `Auto (${column.inferred_type})` : type}
+                  {type === "auto" ? tf("Auto ({type})", { type: t(column.inferred_type) }) : t(type)}
                 </option>
               ))}
             </select>
@@ -1213,9 +1251,7 @@ function Quality({ data }: { data: Analysis }) {
         ))}
       </div>
       <p className="quality-note">
-        Validity checks finite numbers and calendar dates; booleans must be
-        true/false. Text has no domain rules. N/A dimensions are excluded. These
-        scores do not establish real-world accuracy.
+        {t("Validity checks finite numbers and calendar dates; booleans must be true/false. Text has no domain rules. N/A dimensions are excluded. These scores do not establish real-world accuracy.")}
       </p>
     </section>
   );

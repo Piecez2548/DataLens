@@ -1184,3 +1184,17 @@ footer span:first-child {
 .group-controls label { display: grid; gap: 6px; font-size: 11px; font-weight: 700; }
 .group-controls button { min-height: 44px; }
 .bar { display: block; height: 10px; border-radius: 5px; background: #6866ea; min-width: 2px; max-width: 160px; }
+
+.samples { display: grid; gap: 8px; justify-items: center; margin: 14px auto 6px; max-width: 640px; }
+.samples span { font-size: 12px; color: var(--muted, inherit); }
+.samples div { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.samples button {
+  min-height: 44px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  padding: 8px 14px;
+  cursor: pointer;
+}
+.samples button:disabled { opacity: .6; cursor: not-allowed; }

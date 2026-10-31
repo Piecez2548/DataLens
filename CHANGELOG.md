@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Try a sample: three fictional files (Thai sales CSV, two-sheet Excel workbook with a title row, nested JSON) can be opened from the home page to demonstrate every input type without uploading anything.
+- More of the interface is translated in Thai mode: column types and formats, status and counts, chart captions, review-record text, form labels and accessible names.
+- Outlier ranges in issue reasons use readable thousands-separated numbers; the printed brief spaces the "Where to act" tables.
+- Documentation brought up to date: test checklist, operations, threat model and scoring rules no longer describe sign-in, and VALIDATION.md is marked historical.
+
 - Excel export of the located issue list (summary and issue sheets) and of the group summary, generated in the browser without a spreadsheet library; text cells are never evaluated as formulas.
 - "Print / Save as PDF" opens the executive brief and starts the print dialog. The brief's own print button used an inline handler that the site's content security policy blocks.
 - European number formats (`1.234,50`, `1 234,50`, `12,5`; a lone `1,234` stays English thousands) and dates with month names in English and Thai (`5 Jan 2024`, `March 7, 2024`, `9 มกราคม 2567`, `10 ก.พ. 2567`).

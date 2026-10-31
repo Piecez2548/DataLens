@@ -1,4 +1,4 @@
-import { t } from "./i18n";
+import { t, tf } from "./i18n";
 import { useState } from "react";
 import type { Analysis, AuditEvent, BusinessRule } from "./types";
 import { loadTemplates, saveTemplates } from "./ruleTemplates";
@@ -37,7 +37,7 @@ export function UploadPolicy({
           <strong>{t("Prepare an executive report")}</strong>
           <small>{t("Add the owner and source when this analysis will be shared.")}</small>
         </span>
-        <span className="badge">{saved ? "Details added" : "Optional"}</span>
+        <span className="badge">{t(saved ? "Details added" : "Optional")}</span>
       </summary>
       <div className="advanced-body">
         <div className="governance-fields">
@@ -106,7 +106,7 @@ export function UploadPolicy({
         <div className="advanced-actions">
           <p>{t("These details are included in the report. DataLens does not retain the CSV on its server.")}</p>
           <button className="primary" disabled={busy || !ready} onClick={onSave}>
-            {busy ? "Saving…" : saved ? "Update report details" : "Add report details"}
+            {t(busy ? "Saving…" : saved ? "Update report details" : "Add report details")}
           </button>
         </div>
       </div>
@@ -233,7 +233,7 @@ export function GovernancePanel({
             })}
           </div>
           <button className="primary" disabled={busy} onClick={onApplyRules}>
-            {busy ? "Checking…" : "Check these rules"}
+            {t(busy ? "Checking…" : "Check these rules")}
           </button>
         </details>
         {data.business_rules.configured && (
@@ -309,7 +309,7 @@ function RuleTemplatePicker({
   return (
     <div className="rule-templates">
       <label>{t("Saved rule templates")}<select value={chosen} onChange={(event) => setChosen(event.target.value)}>
-          <option value="">{names.length ? "Choose a template" : "No templates yet"}</option>
+          <option value="">{t(names.length ? "Choose a template" : "No templates yet")}</option>
           {names.map((item) => (
             <option key={item}>{item}</option>
           ))}
@@ -345,7 +345,7 @@ function AuditControls({
       <div>
         <strong>{t("Review record")}</strong>
         <p>
-          {events.length} event(s) · latest: {latest?.action ?? "none"}
+          {tf("{count} event(s) · latest: {latest}", { count: events.length, latest: latest?.action ?? t("none") })}
         </p>
         {!canApprove && (
           <p role="status">{t("Final approval needs a confirmed header, saved owner and purpose, passing business rules, and a completed review.")}</p>

@@ -861,7 +861,7 @@ def analyze(
             iqr = q3 - q1
             outlier_mask = (good < q1 - 1.5 * iqr) | (good > q3 + 1.5 * iqr)
             outlier_count = int(outlier_mask.sum())
-            sample("outlier", good.index[outlier_mask], name, f"Outside the 1.5×IQR range {q1 - 1.5 * iqr:.4g} to {q3 + 1.5 * iqr:.4g}")
+            sample("outlier", good.index[outlier_mask], name, f"Outside the 1.5×IQR range {q1 - 1.5 * iqr:,.2f} to {q3 + 1.5 * iqr:,.2f}")
             columns[-1]["outliers"] = outlier_count
             stats.update({"q1": float(q1), "q3": float(q3)})
     missing = int(normalized.isna().sum().sum())

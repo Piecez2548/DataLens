@@ -1,5 +1,7 @@
 # Validation results
 
+> Historical record. The sections below describe release 0.7.0 (September 2026), which still used sign-in. Current verification steps are in `docs/TESTING.md`; the sign-in references no longer apply.
+
 ## Current executive-demo release — 2026-09-09
 
 Frontend ESLint, TypeScript/Vite production build, npm audit, backend Ruff, 42 backend tests, pip-audit, and both Playwright enterprise workflows pass. Production authentication remains mandatory and uses the approved Supabase identity on DataLens's separate origin. Hosted deployments fail closed when the auth flag is missing, and accounts with a verified TOTP factor must complete an `aal2` challenge.

@@ -51,7 +51,7 @@ npm run dev
 
 There is no authentication to configure. Production needs only `DATALENS_AUDIT_SECRET` (a strong random value; the API answers 503 on Vercel without it) and, if the frontend is served from another origin, `DATALENS_ALLOWED_ORIGINS`. Old `VITE_SUPABASE_*`, `SUPABASE_*`, `DATALENS_AUTH_REQUIRED` and `DATALENS_ALLOWED_ROLES` variables are no longer read and can be deleted from the Vercel project.
 
-`samples/demo.csv` is a fictional test fixture. It must never be presented as business evidence.
+`samples/demo.csv` and the files under `frontend/public/samples` (offered as **Try a sample** on the home page) are fictional fixtures. They must never be presented as business evidence.
 
 ## Architecture
 
@@ -92,7 +92,9 @@ Let `R` be rows, `C` columns, `M` missing cells, `P = R×C−M`, `T` type mismat
 | Validity | `100 × (1 − V / K)`; N/A when `K=0` |
 | Overall | Arithmetic mean of available dimensions before rounding |
 
-Only empty or whitespace-only cells count as missing. Literal `NA`, `null`, and `nan` are retained. Numeric statistics exclude missing, mismatched, and nonfinite values. Standard deviation uses `ddof=0`; outliers use 1.5×IQR; correlations need at least three complete finite pairs and do not establish causation.
+Only empty or whitespace-only cells count as missing, plus any markers the user lists (for example `NA`, `N/A`, `-`, matched without regard to case); without markers, literal `NA`, `null`, and `nan` are retained.
+
+Numbers may use thousands separators (`1,234.50`), currency (`฿100`, `$2,000`, `300 บาท`), percent (`15%`, stored as 15), accounting negatives (`(500)`) or European style (`1.234,50`, `12,5`; a lone `1,234` is read as English thousands). Dates are read day-first unless the file proves month-first (a second part above 12) or the user chooses an order; `YYYY-MM-DD`, `YYYY/MM/DD`, `D/M/YYYY`, named months in English and Thai, optional times, and Buddhist Era years from 2400 (converted by subtracting 543) are recognized. Two-digit years are not interpreted. Rows that repeat a user-chosen business key are reported separately from whole-row duplicates. Numeric statistics exclude missing, mismatched, and nonfinite values. Standard deviation uses `ddof=0`; outliers use 1.5×IQR; correlations need at least three complete finite pairs and do not establish causation.
 
 Business rules are separate from structural quality. A dataset can have a high quality score and still fail a required field, domain, minimum, or maximum rule. Approval is enabled only after a review is recorded, when the structural status is ready, the header is confirmed, and configured rules pass.
 
@@ -128,7 +130,7 @@ CI also runs `npm audit --audit-level=high`, `pip-audit`, and the browser workfl
 
 ## Demo evidence
 
-No approved product screenshots are checked into this repository. Demonstrations must use the current production build with `samples/demo.csv`, which is fictional test data and must be labelled as such. Historical local customer-file observations in `VALIDATION.md` are not current-release or business evidence.
+No approved product screenshots are checked into this repository. Demonstrations must use the current production build with the built-in samples or `samples/demo.csv`, which are fictional test data and must be labelled as such. Historical local customer-file observations in `VALIDATION.md` are not current-release or business evidence.
 
 ## Roadmap
 

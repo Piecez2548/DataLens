@@ -1,4 +1,4 @@
-import { t } from "./i18n";
+import { t, tf } from "./i18n";
 import {
   BarChart,
   Bar,
@@ -40,10 +40,10 @@ export default function Charts({
           <div>
             <h3>{t(histogram ? "Value distribution" : "Most frequent values")}</h3>
             <p>
-              {column.name} · {histogram ? "Histogram" : "Top 10 categories"}
+              {column.name} · {t(histogram ? "Histogram" : "Top 10 categories")}
             </p>
           </div>
-          <span className="badge">{column.type}</span>
+          <span className="badge">{t(column.type)}</span>
         </div>
         <div className="chart" aria-hidden="true">
           <ResponsiveContainer width="100%" height="100%">
@@ -105,7 +105,7 @@ export default function Charts({
           <summary>{t("View column types as a table")}</summary>
           <table>
             <thead><tr><th>{t("Detected type")}</th><th>{t("Columns")}</th></tr></thead>
-            <tbody>{types.map((item) => <tr key={item.name}><td>{item.name}</td><td>{item.value}</td></tr>)}</tbody>
+            <tbody>{types.map((item) => <tr key={item.name}><td>{t(item.name)}</td><td>{item.value}</td></tr>)}</tbody>
           </table>
         </details>
       </section>
@@ -160,8 +160,8 @@ export default function Charts({
             <h3>{t("Numeric relationship")}</h3>
             <p>
               {data.scatter_axes.length === 2
-                ? `${data.scatter_axes.join(" × ")} · first 500 complete pairs`
-                : "Upload at least two numeric columns to see a scatter plot"}
+                ? tf("{axes} · first 500 complete pairs", { axes: data.scatter_axes.join(" × ") })
+                : t("Upload at least two numeric columns to see a scatter plot")}
             </p>
           </div>
         </div>
