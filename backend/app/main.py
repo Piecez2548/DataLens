@@ -2,6 +2,7 @@ import hashlib
 import json
 import os
 from datetime import UTC, date, datetime
+
 from fastapi import FastAPI, Form, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -56,8 +57,8 @@ async def upload(
     schema_config_json: str | None = Form(None, alias="schema"),
 ):
     try:
-        if not (file.filename or "").lower().endswith((".csv", ".xlsx")):
-            raise HTTPException(400, "Please upload a .csv or .xlsx file.")
+        if not (file.filename or "").lower().endswith((".csv", ".xlsx", ".json", ".jsonl", ".ndjson")):
+            raise HTTPException(400, "Please upload a .csv, .xlsx or .json file.")
         content = await file.read(UPLOAD_LIMIT + 1)
         if len(content) > UPLOAD_LIMIT:
             raise HTTPException(413, f"CSV exceeds the {UPLOAD_LIMIT // (1024 * 1024)} MB limit.")
@@ -102,6 +103,7 @@ async def upload(
             schema_config.get("type_overrides"),
             schema_config.get("business_rules"),
             schema_config.get("missing_markers"),
+            schema_config.get("sheet"),
         )
         analysis_id = hashlib.sha256(
             f"{result['provenance']['sha256']}:{json.dumps(schema_config, sort_keys=True)}:{app.version}".encode()

@@ -1143,3 +1143,24 @@ footer span:first-child {
 }
 .rule-templates button { min-height: 44px; }
 .rule-templates p { flex-basis: 100%; font-size: 12px; }
+
+.issue-kinds { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
+.issue-kinds button {
+  min-height: 44px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  padding: 8px 12px;
+  cursor: pointer;
+}
+.issue-kinds button.active { border-color: #6866ea; font-weight: 700; }
+.issue-filter { display: grid; gap: 6px; font-size: 11px; font-weight: 700; max-width: 280px; margin-bottom: 12px; }
+.issue-filter select, .header-notice select {
+  min-height: 44px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  padding: 8px 10px;
+}

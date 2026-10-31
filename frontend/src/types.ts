@@ -44,6 +44,22 @@ export interface Analysis {
   };
   columns: Column[];
   preview: Record<string, string | null>[];
+  issue_samples: {
+    row_label: "row" | "record";
+    max_examples: number;
+    kinds: Record<
+      string,
+      {
+        total: number;
+        examples: {
+          row: number;
+          column: string | null;
+          value: string | null;
+          reason: string;
+        }[];
+      }
+    >;
+  };
   timeseries: {
     column: string;
     granularity: "day" | "month" | "year";
@@ -83,8 +99,9 @@ export interface Analysis {
     analyzed_rows: number;
     preview_rows: number;
     method_version: string;
-    source_format: "csv" | "xlsx";
+    source_format: "csv" | "xlsx" | "json";
     sheet: string | null;
+    sheets: string[] | null;
     encoding: string;
     delimiter: string | null;
     missing_markers: string[];

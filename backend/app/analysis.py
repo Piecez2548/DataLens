@@ -5,6 +5,7 @@ import csv
 import datetime
 import hashlib
 import io
+import json
 import re
 import unicodedata
 import zipfile
@@ -19,6 +20,8 @@ MAX_ROWS = 100_000
 MAX_COLUMNS = 100
 MAX_XLSX_UNCOMPRESSED = 50 * 1024 * 1024
 MAX_MISSING_MARKERS = 20
+MAX_SAMPLES = 1000
+JSON_SUFFIXES = (".json", ".jsonl", ".ndjson")
 ALLOWED_TYPES = {"numeric", "categorical", "datetime", "boolean", "email", "identifier"}
 EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
@@ -115,7 +118,7 @@ def _timeseries(column: str, values: pd.Series) -> dict | None:
     }
 
 
-def _xlsx_to_csv_text(content: bytes) -> tuple[str, str]:
+def _xlsx_to_csv_text(content: bytes, sheet: str | None = None) -> tuple[str, str, list[str]]:
     """Read cached values of the first worksheet. Formulas, macros and external links are never evaluated."""
     try:
         with zipfile.ZipFile(io.BytesIO(content)) as archive:
@@ -129,9 +132,12 @@ def _xlsx_to_csv_text(content: bytes) -> tuple[str, str]:
     except Exception as exc:  # openpyxl raises several unrelated types for corrupt workbooks
         raise ValueError("The Excel workbook could not be read.") from exc
     try:
-        sheet = workbook.worksheets[0]
+        names = list(workbook.sheetnames)
+        if sheet is not None and sheet not in names:
+            raise ValueError("The selected worksheet does not exist in this workbook.")
+        worksheet = workbook[sheet] if sheet is not None else workbook.worksheets[0]
         rows = []
-        for row in sheet.iter_rows(values_only=True):
+        for row in worksheet.iter_rows(values_only=True):
             cells = [_xlsx_cell(cell) for cell in row]
             while cells and cells[-1] == "":
                 cells.pop()
@@ -142,14 +148,14 @@ def _xlsx_to_csv_text(content: bytes) -> tuple[str, str]:
             rows.pop()
         width = max((len(row) for row in rows), default=0)
         if not width:
-            raise ValueError("The first worksheet is empty.")
+            raise ValueError(f"Worksheet “{worksheet.title}” is empty.")
         if width > MAX_COLUMNS:
             raise ValueError("Maximum 100 columns supported.")
         buffer = io.StringIO()
         writer = csv.writer(buffer, lineterminator="\n")
         for row in rows:
             writer.writerow(row + [""] * (width - len(row)))
-        return buffer.getvalue(), sheet.title
+        return buffer.getvalue(), worksheet.title, names
     finally:
         workbook.close()
 
@@ -166,6 +172,67 @@ def _xlsx_cell(value) -> str:
     if isinstance(value, float) and value.is_integer():
         return str(int(value))
     return str(value)
+
+
+def _flatten(value, prefix: str = "", depth: int = 0) -> dict:
+    """Flatten nested objects into dotted columns; arrays and very deep objects become JSON text."""
+    if isinstance(value, dict) and depth < 3 and value:
+        flat = {}
+        for key, item in value.items():
+            flat.update(_flatten(item, f"{prefix}.{key}" if prefix else str(key), depth + 1))
+        return flat
+    return {prefix or "value": value}
+
+
+def _json_cell(value) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False, sort_keys=True)
+    return str(value)
+
+
+def _json_to_csv_text(content: bytes) -> tuple[str, str]:
+    """Turn an array of records (or JSON Lines) into CSV text with the union of keys as columns."""
+    raw, encoding = _decode(content)
+    try:
+        try:
+            document = json.loads(raw)
+        except json.JSONDecodeError:
+            lines = [line for line in raw.splitlines() if line.strip()]
+            document = [json.loads(line) for line in lines]
+    except (json.JSONDecodeError, RecursionError) as exc:
+        raise ValueError("The JSON file is not valid JSON or JSON Lines.") from exc
+    if isinstance(document, dict):
+        candidates = [
+            key for key, item in document.items() if isinstance(item, list) and item and all(isinstance(r, dict) for r in item)
+        ]
+        if len(candidates) == 1:
+            document = document[candidates[0]]
+        elif not candidates:
+            document = [document]
+        else:
+            raise ValueError(f"The JSON has several record arrays ({', '.join(candidates[:5])}); keep one.")
+    if not isinstance(document, list) or not document:
+        raise ValueError("The JSON must contain a non-empty array of records.")
+    if len(document) > MAX_ROWS:
+        raise ValueError("Maximum 100,000 rows supported.")
+    records = [_flatten(item) if isinstance(item, dict) else {"value": item} for item in document]
+    keys: dict[str, None] = {}
+    for record in records:
+        keys.update(dict.fromkeys(record))
+    if len(keys) > MAX_COLUMNS:
+        raise ValueError("Maximum 100 columns supported.")
+    buffer = io.StringIO()
+    writer = csv.writer(buffer, lineterminator="\n")
+    writer.writerow(list(keys))
+    for record in records:
+        writer.writerow([_json_cell(record.get(key)) for key in keys])
+    return buffer.getvalue(), encoding
 
 
 DELIMITERS = {",": "comma", ";": "semicolon", "	": "tab", "|": "pipe"}
@@ -379,13 +446,19 @@ def analyze(
     type_overrides: dict[str, str] | None = None,
     business_rules: dict[str, dict] | None = None,
     missing_markers: list[str] | None = None,
+    sheet: str | None = None,
 ) -> dict:
     if len(content) > MAX_BYTES:
         raise ValueError("CSV exceeds the 10 MB limit.")
-    sheet_name = None
+    sheet_name, sheet_names = None, None
+    if sheet is not None and not isinstance(sheet, str):
+        raise ValueError("The worksheet name must be text.")
     if content.startswith(b"PK\x03\x04"):
-        text, sheet_name = _xlsx_to_csv_text(content)
+        text, sheet_name, sheet_names = _xlsx_to_csv_text(content, sheet)
         encoding, delimiter, source_format = "xlsx", ",", "xlsx"
+    elif filename.lower().endswith(JSON_SUFFIXES):
+        text, encoding = _json_to_csv_text(content)
+        delimiter, source_format = ",", "json"
     else:
         text, encoding = _decode(content)
         if "\x00" in text:
@@ -458,6 +531,24 @@ def analyze(
     if unknown_overrides or invalid_override_types:
         raise ValueError("Schema overrides contain an unknown column or type.")
     columns, numeric, personal_data = [], {}, []
+    row_offset = 1 if source_format == "json" else (2 if use_header else 1)
+    samples: dict[str, dict] = {}
+
+    def sample(kind: str, index, column: str | None, reason: str) -> None:
+        """Record up to MAX_SAMPLES located examples per issue kind while counting every occurrence."""
+        entry = samples.setdefault(kind, {"total": 0, "examples": []})
+        entry["total"] += len(index)
+        room = MAX_SAMPLES - len(entry["examples"])
+        for position in list(index)[: max(room, 0)]:
+            if column is None:
+                value = " | ".join(str(cell) for cell in normalized.loc[position].dropna().head(3))
+            else:
+                cell = normalized.at[position, column]
+                value = None if cell is None or pd.isna(cell) else str(cell)
+            entry["examples"].append(
+                {"row": int(position) + row_offset, "column": column, "value": value[:80] if value else value, "reason": reason}
+            )
+
     mismatches = invalid = checked = 0
     for name in headers:
         values = normalized[name].dropna()
@@ -496,10 +587,14 @@ def analyze(
         bad = 0
         stats = None
         histogram = []
+        sample("missing", normalized.index[normalized[name].isna()], name, "Blank or marked as missing")
+        if mismatch:
+            sample("mismatch", values.index[kinds != dtype], name, f"Does not look like {dtype}")
         if dtype == "numeric":
             parsed = pd.to_numeric(matched, errors="coerce").astype(float)
             good = parsed[np.isfinite(parsed)]
             bad = len(parsed) - len(good)
+            sample("invalid", parsed.index[~np.isfinite(parsed)], name, "Not a finite number")
             numeric[name] = pd.to_numeric(normalized[name], errors="coerce").replace([np.inf, -np.inf], np.nan)
             if len(good):
                 stats = {
@@ -516,11 +611,17 @@ def analyze(
                     for i, count in enumerate(heights)
                 ]
         elif dtype == "datetime":
-            bad = int((~matched.map(_is_valid_date)).sum())
+            invalid_dates = ~matched.map(_is_valid_date)
+            bad = int(invalid_dates.sum())
+            sample("invalid", matched.index[invalid_dates], name, "Not a valid calendar date")
         elif dtype == "email":
-            bad = int((~matched.map(lambda value: bool(EMAIL_PATTERN.fullmatch(value)))).sum())
+            invalid_emails = ~matched.map(lambda value: bool(EMAIL_PATTERN.fullmatch(value)))
+            bad = int(invalid_emails.sum())
+            sample("invalid", matched.index[invalid_emails], name, "Not a valid email shape")
         elif pattern == "thai_national_id":
-            bad = int((~matched.str.replace(r"[\s-]", "", regex=True).map(_thai_id_valid)).sum())
+            invalid_ids = ~matched.str.replace(r"[\s-]", "", regex=True).map(_thai_id_valid)
+            bad = int(invalid_ids.sum())
+            sample("invalid", matched.index[invalid_ids], name, "Thai national ID check digit is wrong")
         if dtype in {"numeric", "datetime", "boolean", "email"} or pattern == "thai_national_id":
             checked += len(matched)
             invalid += bad
@@ -545,12 +646,16 @@ def analyze(
         if dtype == "numeric" and stats:
             q1, q3 = good.quantile([0.25, 0.75])
             iqr = q3 - q1
-            outlier_count = int(((good < q1 - 1.5 * iqr) | (good > q3 + 1.5 * iqr)).sum())
+            outlier_mask = (good < q1 - 1.5 * iqr) | (good > q3 + 1.5 * iqr)
+            outlier_count = int(outlier_mask.sum())
+            sample("outlier", good.index[outlier_mask], name, f"Outside the 1.5×IQR range {q1 - 1.5 * iqr:.4g} to {q3 + 1.5 * iqr:.4g}")
             columns[-1]["outliers"] = outlier_count
             stats.update({"q1": float(q1), "q3": float(q3)})
     missing = int(normalized.isna().sum().sum())
     present = n * len(headers) - missing
-    duplicates = int(normalized.duplicated().sum())
+    duplicate_mask = normalized.duplicated()
+    duplicates = int(duplicate_mask.sum())
+    sample("duplicate", normalized.index[duplicate_mask], None, "Repeats an earlier row")
     scores = {
         "Completeness": 100 * (1 - missing / (n * len(headers))),
         "Consistency": 100 * (1 - mismatches / present) if present else None,
@@ -592,11 +697,13 @@ def analyze(
         nonempty = values.dropna().astype(str)
         if rule.get("required") is True:
             rule_results.append({"column": name, "rule": "required", "checked": n, "violations": int(values.isna().sum())})
+            sample("rule", values.index[values.isna()], name, "Required value is blank")
         if "allowed_values" in rule:
             allowed = rule["allowed_values"]
             if not isinstance(allowed, list) or len(allowed) > 100 or not all(isinstance(item, str) for item in allowed):
                 raise ValueError("allowed_values must be a list of at most 100 text values.")
             allowed_set = set(allowed)
+            sample("rule", nonempty.index[~nonempty.isin(allowed_set)], name, "Value is not in the allowed list")
             rule_results.append(
                 {
                     "column": name,
@@ -627,7 +734,14 @@ def analyze(
             threshold = rule[key]
             if isinstance(threshold, bool) or not isinstance(threshold, (int, float)) or not np.isfinite(threshold):
                 raise ValueError(f"{key} business rules must be finite numbers.")
-            violations = (numeric_values < threshold).sum() if key == "min" else (numeric_values > threshold).sum()
+            violation_mask = numeric_values < threshold if key == "min" else numeric_values > threshold
+            violations = violation_mask.sum()
+            sample(
+                "rule",
+                numeric_values.index[violation_mask],
+                name,
+                f"Below the minimum {threshold:g}" if key == "min" else f"Above the maximum {threshold:g}",
+            )
             rule_results.append(
                 {"column": name, "rule": operator, "threshold": float(threshold), "checked": len(numeric_values), "violations": int(violations)}
             )
@@ -672,6 +786,11 @@ def analyze(
         "executive": executive,
         "columns": columns,
         "preview": normalized.head(100).where(normalized.head(100).notna(), None).to_dict("records"),
+        "issue_samples": {
+            "row_label": "record" if source_format == "json" else "row",
+            "max_examples": MAX_SAMPLES,
+            "kinds": samples,
+        },
         "timeseries": next(
             (
                 series
@@ -700,6 +819,7 @@ def analyze(
             "method_version": "0.7.1",
             "source_format": source_format,
             "sheet": sheet_name,
+            "sheets": sheet_names,
             "encoding": encoding,
             "delimiter": DELIMITERS[delimiter] if source_format == "csv" else None,
             "missing_markers": sorted(marker_set),

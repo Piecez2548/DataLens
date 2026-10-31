@@ -23,9 +23,10 @@ import {
 import { downloadExecutiveReport } from "./report";
 import ChartBoundary from "./ChartBoundary";
 import Compare from "./Compare";
+import IssueExplorer from "./IssueExplorer";
 const Charts = lazy(() => import("./Charts"));
 const MAX_UPLOAD_MB = import.meta.env.PROD ? 4 : 10;
-const baseTabs = ["Overview", "Data quality", "Explore", "Data preview"] as const;
+const baseTabs = ["Overview", "Data quality", "Issues", "Explore", "Data preview"] as const;
 type Tab = (typeof baseTabs)[number] | "Compare";
 const MARKER_PRESET = ["NA", "N/A", "null", "none", "nan", "-", "?"];
 const parseMarkers = (text: string) =>
@@ -82,6 +83,7 @@ export default function App() {
   >({});
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [markerText, setMarkerText] = useState("");
+  const [sheetName, setSheetName] = useState("");
   const [other, setOther] = useState<Analysis | null>(null);
   const compareInput = useRef<HTMLInputElement>(null);
   const input = useRef<HTMLInputElement>(null);
@@ -102,6 +104,7 @@ export default function App() {
       type_overrides?: Record<string, string>;
       business_rules?: Record<string, BusinessRule>;
       missing_markers?: string[];
+      sheet?: string;
     },
   ): Promise<Analysis> {
     const body = new FormData();
@@ -113,6 +116,7 @@ export default function App() {
         governance: { ...governance, authorized_to_process: authorized },
         business_rules: schema?.business_rules ?? businessRules,
         missing_markers: schema?.missing_markers ?? parseMarkers(markerText),
+        sheet: schema?.sheet,
       }),
     );
     const response = await fetch(`/api/analyze?header_mode=${headerMode}`, {
@@ -133,11 +137,11 @@ export default function App() {
     return response.json();
   }
   const validFile = (file: File) =>
-    /\.(csv|xlsx)$/i.test(file.name) && file.size <= MAX_UPLOAD_MB * 1024 * 1024;
+    /\.(csv|xlsx|json|jsonl|ndjson)$/i.test(file.name) && file.size <= MAX_UPLOAD_MB * 1024 * 1024;
   async function compareWith(file: File) {
     if (busy || !data) return;
     if (!validFile(file)) {
-      setError(`Choose a CSV or XLSX file no larger than ${MAX_UPLOAD_MB} MB.`);
+      setError(`Choose a CSV, XLSX or JSON file no larger than ${MAX_UPLOAD_MB} MB.`);
       return;
     }
     setBusy(true);
@@ -166,6 +170,7 @@ export default function App() {
       type_overrides?: Record<string, string>;
       business_rules?: Record<string, BusinessRule>;
       missing_markers?: string[];
+      sheet?: string;
     },
   ) {
     if (busy) return;
@@ -180,7 +185,10 @@ export default function App() {
     setBusy(true);
     setError("");
     try {
-      const result = await requestAnalysis(file, headerMode, schema);
+      const sheet = schema?.sheet ?? (file === lastFile ? sheetName || undefined : undefined);
+      const result = await requestAnalysis(file, headerMode, { ...schema, sheet });
+      setSheetName(result.provenance.sheet ?? "");
+      if (file !== lastFile) setBusinessRules({});
       setData(result);
       setAuditEvents([result.audit_event]);
       setLastFile(file);
@@ -245,6 +253,7 @@ export default function App() {
   function clearDataset() {
     setData(null);
     setOther(null);
+    setSheetName("");
     setMarkerText("");
     setLastFile(null);
     setColumnNames([]);
@@ -351,7 +360,7 @@ export default function App() {
           <input
             ref={input}
             type="file"
-            accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            accept=".csv,.xlsx,.json,.jsonl,.ndjson,text/csv,application/json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             className="sr-only"
             aria-label="Upload CSV file"
             onChange={(e) => {
@@ -362,7 +371,7 @@ export default function App() {
           <input
             ref={compareInput}
             type="file"
-            accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            accept=".csv,.xlsx,.json,.jsonl,.ndjson,text/csv,application/json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             className="sr-only"
             aria-label="Choose a file to compare"
             onChange={(e) => {
@@ -405,7 +414,7 @@ export default function App() {
                 <FileSpreadsheet size={34} />
               </div>
               <h2>Your next discovery starts here</h2>
-              <p>Drop a CSV or Excel (.xlsx) file here to explore its quality and structure.</p>
+              <p>Drop a CSV, Excel (.xlsx) or JSON file here to explore its quality and structure.</p>
               <p>
                 Current release: use synthetic or confirmed non-personal data only.
                 CSV bytes are sent to the analysis service and may be handled transiently
@@ -428,7 +437,7 @@ export default function App() {
                 <ArrowUpRight size={17} />
               </button>
               <small>
-                CSV (UTF-8, Thai Windows-874, UTF-16; comma, semicolon, tab or pipe) or Excel .xlsx (first sheet) · up to {MAX_UPLOAD_MB} MB · 100,000 rows · 100
+                CSV (UTF-8, Thai Windows-874, UTF-16; comma, semicolon, tab or pipe) Excel .xlsx (choose any sheet) or JSON records · up to {MAX_UPLOAD_MB} MB · 100,000 rows · 100
                 columns
               </small>
             </section>
@@ -477,7 +486,9 @@ export default function App() {
                   {data.provenance.method_version} ·{" "}
                   {data.provenance.source_format === "xlsx"
                     ? `Excel sheet “${data.provenance.sheet}”`
-                    : `${data.provenance.encoding} · ${data.provenance.delimiter}`}{" "}
+                    : data.provenance.source_format === "json"
+                      ? "JSON records"
+                      : `${data.provenance.encoding} · ${data.provenance.delimiter}`}{" "}
                   ·{" "}
                   {fmt(data.provenance.input_bytes)} bytes
                 </small>
@@ -497,6 +508,32 @@ export default function App() {
               {tab === "Overview" && (
                 <>
                   <ExecutiveBrief data={data} />
+                  {data.provenance.sheets && data.provenance.sheets.length > 1 && (
+                    <section className="header-notice" role="status">
+                      <FileSpreadsheet size={20} />
+                      <div>
+                        <strong>This workbook has {data.provenance.sheets.length} sheets</strong>
+                        <p>Each sheet is analyzed on its own. Choose the sheet to analyze.</p>
+                      </div>
+                      <select
+                        aria-label="Worksheet"
+                        value={data.provenance.sheet ?? ""}
+                        disabled={busy || !lastFile}
+                        onChange={(event) => {
+                          if (!lastFile) return;
+                          setBusinessRules({});
+                          void upload(lastFile, "auto", {
+                            sheet: event.target.value,
+                            business_rules: {},
+                          });
+                        }}
+                      >
+                        {data.provenance.sheets.map((name) => (
+                          <option key={name}>{name}</option>
+                        ))}
+                      </select>
+                    </section>
+                  )}
                   {data.header.mode === "auto" && (
                     <section className="header-notice" role="status">
                       <CircleAlert size={20} />
@@ -685,6 +722,7 @@ export default function App() {
                   />
                 </>
               )}
+              {tab === "Issues" && <IssueExplorer data={data} />}
               {tab === "Compare" && other && (
                 <Compare base={data} other={other} onClose={() => { setOther(null); setTab("Overview"); }} />
               )}

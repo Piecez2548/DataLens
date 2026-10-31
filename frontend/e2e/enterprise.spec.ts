@@ -152,3 +152,35 @@ test("applies missing markers and saves a rule template", async ({ page }) => {
   await page.getByRole("button", { name: "Save current rules" }).click();
   await expect(page.getByText(/Saved “Amounts”/)).toBeVisible();
 });
+
+test("reads every sheet of a workbook and locates issues for export", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel(/I am allowed to analyze this file/).check();
+  await page
+    .getByLabel("Upload CSV file")
+    .setInputFiles(path.resolve("e2e/fixtures/two-sheets.xlsx"));
+  await expect(page.getByText("This workbook has 2 sheets")).toBeVisible();
+  await page.getByLabel("Worksheet").selectOption("Orders");
+  await expect(page.getByText("4 rows · 2 columns")).toBeVisible();
+
+  await page.getByRole("navigation", { name: "Dataset views" }).getByRole("button", { name: "Issues" }).click();
+  await expect(page.getByRole("heading", { name: "Issue locations" })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "Blank or marked as missing" })).toBeVisible();
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: /Export issue list/ }).click(),
+  ]);
+  expect(download.suggestedFilename()).toBe("two-sheets-issues.csv");
+});
+
+test("analyzes a JSON file of records", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel(/I am allowed to analyze this file/).check();
+  await page.getByLabel("Upload CSV file").setInputFiles({
+    name: "orders.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify([{ id: 1, buyer: { name: "A" } }, { id: 2, buyer: { name: "B" } }]) ),
+  });
+  await expect(page.getByText("2 rows · 2 columns")).toBeVisible();
+  await expect(page.getByText("JSON records").first()).toBeVisible();
+});

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Accept JSON (array of records, an object wrapping one array, or JSON Lines); nested objects are flattened to dotted columns and arrays kept as JSON text.
+- Choose any worksheet of an Excel workbook; the workbook's sheet list is recorded in provenance.
+- Locate problems: every missing, duplicate, type-conflict, invalid, outlier and business-rule finding lists its row (matching the original file numbering) or record, column, value and reason. Totals are exact; up to 1,000 examples per kind are returned.
+- New Issues tab with filters and export of the issue list to CSV (UTF-8 BOM for Excel, spreadsheet-formula safe) and JSON; the executive brief gains a "Where to act" section.
+
 - Accept real-world exports: UTF-8 (with or without BOM), UTF-16, and Thai Windows-874 files are decoded deterministically; comma, semicolon, tab, and pipe delimiters are detected instead of rejected.
 - Record the detected encoding and delimiter in the provenance record, on-screen strip, and executive brief.
 - Recognize and validate dates written YYYY-MM-DD, YYYY/MM/DD, DD/MM/YYYY (day first), with optional time, and Buddhist Era years (2400+, converted by subtracting 543).

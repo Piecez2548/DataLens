@@ -149,6 +149,7 @@ def test_provenance_fingerprints_the_exact_input_without_generating_values():
         "method_version": "0.7.1",
         "source_format": "csv",
         "sheet": None,
+        "sheets": None,
         "encoding": "utf-8",
         "delimiter": "comma",
         "missing_markers": [],
@@ -439,6 +440,86 @@ def test_xlsx_first_sheet_is_read_with_dates_and_numbers():
     assert result["provenance"]["sheet"] == "Sales"
     assert result["provenance"]["delimiter"] is None
     assert len(result["provenance"]["sha256"]) == 64
+
+
+def test_api_accepts_xlsx_json_and_sheet_choice():
+    import json
+
+    client = TestClient(app)
+    book = _workbook([["a", "b"], [1, 2], [3, 4]], "Only")
+    ok = client.post("/api/analyze", files={"file": ("b.xlsx", book)}, data={"schema": json.dumps({"sheet": "Only"})})
+    assert ok.status_code == 200 and ok.json()["provenance"]["sheet"] == "Only"
+    bad = client.post("/api/analyze", files={"file": ("b.xlsx", book)}, data={"schema": json.dumps({"sheet": "X"})})
+    assert bad.status_code == 400
+    js = client.post("/api/analyze", files={"file": ("r.json", b'[{"a": 1}, {"a": 2}]')})
+    assert js.status_code == 200 and js.json()["rows"] == 2
+
+
+def test_xlsx_sheet_can_be_selected():
+    import io
+
+    import openpyxl
+
+    workbook = openpyxl.Workbook()
+    workbook.active.title = "Summary"
+    workbook.active.append(["a"])
+    workbook.active.append([1])
+    second = workbook.create_sheet("Detail")
+    second.append(["x", "y"])
+    second.append([1, 2])
+    second.append([3, 4])
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+    first = analyze(buffer.getvalue(), "b.xlsx")
+    assert first["provenance"]["sheets"] == ["Summary", "Detail"]
+    assert first["column_count"] == 1
+    chosen = analyze(buffer.getvalue(), "b.xlsx", sheet="Detail")
+    assert (chosen["provenance"]["sheet"], chosen["rows"], chosen["column_count"]) == ("Detail", 2, 2)
+    with pytest.raises(ValueError, match="does not exist"):
+        analyze(buffer.getvalue(), "b.xlsx", sheet="Nope")
+
+
+def test_json_records_are_flattened_with_the_union_of_keys():
+    content = (
+        b'{"data": [{"id": 1, "user": {"name": "A", "age": 30}, "tags": ["x"]},'
+        b' {"id": 2, "user": {"name": "B"}, "extra": true}]}'
+    )
+    result = analyze(content, "records.json")
+    names = [c["name"] for c in result["columns"]]
+    assert names == ["id", "user.name", "user.age", "tags", "extra"]
+    assert result["rows"] == 2
+    assert result["provenance"]["source_format"] == "json"
+    assert result["issue_samples"]["row_label"] == "record"
+    assert result["columns"][2]["missing"] == 1
+
+
+def test_json_lines_and_errors():
+    assert analyze(b'{"a": 1}\n{"a": 2}\n', "lines.jsonl")["rows"] == 2
+    with pytest.raises(ValueError, match="not valid JSON"):
+        analyze(b"{broken", "bad.json")
+    with pytest.raises(ValueError, match="non-empty array"):
+        analyze(b"[]", "empty.json")
+
+
+def test_issue_samples_locate_rows_with_file_numbering():
+    content = b"id,amount,when\n1,10,2024-01-01\n2,,2024-02-30\n3,oops,2024-01-03\n3,oops,2024-01-03\n4,1000,2024-01-04\n5,20,2024-01-05\n6,30,2024-01-06\n"
+    result = analyze(content, "loc.csv", "present", business_rules={"amount": {"min": 0, "max": 100}})
+    kinds = result["issue_samples"]["kinds"]
+    assert result["issue_samples"]["row_label"] == "row"
+    assert [(e["row"], e["column"]) for e in kinds["missing"]["examples"]] == [(3, "amount")]
+    assert [e["row"] for e in kinds["invalid"]["examples"]] == [3]
+    assert [e["row"] for e in kinds["mismatch"]["examples"]] == [4, 5]
+    assert [e["row"] for e in kinds["duplicate"]["examples"]] == [5]
+    assert [e["row"] for e in kinds["rule"]["examples"]] == [6]
+    assert kinds["rule"]["examples"][0]["reason"] == "Above the maximum 100"
+
+
+def test_issue_samples_are_capped_but_totals_are_exact():
+    content = b"v,w\n" + b"".join(b",1\n" for _ in range(3000))
+    result = analyze(content, "many.csv", "present")
+    entry = result["issue_samples"]["kinds"]["missing"]
+    assert entry["total"] == 3000
+    assert len(entry["examples"]) == 1000
 
 
 def test_corrupt_xlsx_is_rejected():
