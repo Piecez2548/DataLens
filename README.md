@@ -9,7 +9,8 @@ DataLens is a deterministic CSV profiling workspace for governed, reviewable dat
 | Project Hub | https://nexus-lemon-eight-32.vercel.app/projects |
 
 The platform supports account-free analysis, structural quality metrics, business rules, review workflows, signed metadata events, and an exportable executive brief. It does not certify that a dataset is accurate, complete, lawful, or suitable for a particular business decision; the accountable data owner remains responsible for those determinations.
-## v0.7.1
+
+## Features (v0.7.1)
 
 - No sign-in: analysis, review, and approval work without an account. Only Nexus Main uses accounts.
 - One-step CSV upload with source details, business rules, and approval available after analysis.
@@ -65,8 +66,9 @@ FastAPI on Vercel
   └─ signed metadata-only audit event
                  │
 Browser state + exported HTML brief
-CSV bytes are released after the request; no application database stores them. Framework or hosting infrastructure may use transient memory or temporary storage while handling the request.
 ```
+
+CSV bytes are released after the request; no application database stores them. Framework or hosting infrastructure may use transient memory or temporary storage while handling the request.
 
 Key files:
 
