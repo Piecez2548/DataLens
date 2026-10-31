@@ -74,6 +74,8 @@ export interface Analysis {
     analyzed_rows: number;
     preview_rows: number;
     method_version: string;
+    encoding: string;
+    delimiter: string;
     calculation_mode: "deterministic";
     data_values_generated: false;
   };

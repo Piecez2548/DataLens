@@ -147,6 +147,8 @@ def test_provenance_fingerprints_the_exact_input_without_generating_values():
         "analyzed_rows": 2,
         "preview_rows": 2,
         "method_version": "0.7.1",
+        "encoding": "utf-8",
+        "delimiter": "comma",
         "calculation_mode": "deterministic",
         "data_values_generated": False,
     }
@@ -321,11 +323,28 @@ def test_sequential_business_measures_remain_numeric():
     assert result["correlations"]
 
 
-@pytest.mark.parametrize("delimiter", [b";", b"\t"])
-def test_likely_alternate_delimiter_is_rejected(delimiter):
+@pytest.mark.parametrize(("delimiter", "label"), [(b";", "semicolon"), (b"\t", "tab"), (b"|", "pipe")])
+def test_alternate_delimiters_are_detected(delimiter, label):
     content = delimiter.join([b"name", b"amount"]) + b"\n" + delimiter.join([b"A", b"10"]) + b"\n"
-    with pytest.raises(ValueError, match="semicolon or tab delimiter"):
-        analyze(content, "wrong-delimiter.csv")
+    result = analyze(content, "alt.csv")
+    assert result["column_count"] == 2
+    assert result["provenance"]["delimiter"] == label
+
+
+def test_thai_windows_874_and_utf16_files_are_decoded():
+    text = "ชื่อ,จำนวน\nสมชาย,10\nสมหญิง,20\n"
+    legacy = analyze(text.encode("cp874"), "th.csv")
+    assert legacy["provenance"]["encoding"] == "cp874"
+    assert legacy["columns"][0]["name"] == "ชื่อ"
+    utf16 = analyze(text.encode("utf-16"), "th16.csv")
+    assert utf16["provenance"]["encoding"] == "utf-16"
+    assert utf16["preview"][0]["ชื่อ"] == "สมชาย"
+    assert analyze(text.encode("utf-8-sig"), "bom.csv")["provenance"]["encoding"] == "utf-8"
+
+
+def test_undecodable_bytes_are_rejected():
+    with pytest.raises(ValueError, match="encoded CSV"):
+        analyze(b"a,b\n\xd8\xff,1\n\x81\x8d,2\n", "bad.csv")
 
 
 def test_missing_issue_severity_uses_all_cells_as_denominator():

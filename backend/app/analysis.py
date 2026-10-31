@@ -1,9 +1,11 @@
 """Deterministic CSV profiling. All scores describe inferred rules, not truth."""
 
+import codecs
 import csv
 import hashlib
 import io
 import re
+import unicodedata
 from collections import Counter
 
 import numpy as np
@@ -16,9 +18,43 @@ ALLOWED_TYPES = {"numeric", "categorical", "datetime", "boolean", "email", "iden
 EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
 
-def _detect_header(text: str) -> bool:
+DELIMITERS = {",": "comma", ";": "semicolon", "	": "tab", "|": "pipe"}
+
+
+def _decode(content: bytes) -> tuple[str, str]:
+    """Decode deterministically: BOM, then UTF-8, then Thai Windows-874 (common for Excel exports)."""
+    if content.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)):
+        try:
+            return content.decode("utf-16"), "utf-16"
+        except UnicodeDecodeError as exc:
+            raise ValueError("The UTF-16 file could not be decoded.") from exc
+    try:
+        return content.decode("utf-8-sig"), "utf-8"
+    except UnicodeDecodeError:
+        pass
+    try:
+        return content.decode("cp874"), "cp874"
+    except UnicodeDecodeError as exc:
+        raise ValueError("Use a UTF-8, UTF-16 or Thai Windows-874 encoded CSV file.") from exc
+
+
+def _detect_delimiter(text: str) -> str:
+    """Pick the delimiter that splits the first rows into the same number (>1) of fields; comma wins ties."""
+    best, best_score = ",", 0
+    for candidate in DELIMITERS:
+        sample = []
+        for row in csv.reader(io.StringIO(text), delimiter=candidate):
+            sample.append(len(row))
+            if len(sample) == 20:
+                break
+        if sample and sample[0] > 1 and len(set(sample)) == 1 and sample[0] > best_score:
+            best, best_score = candidate, sample[0]
+    return best
+
+
+def _detect_header(text: str, delimiter: str = ",") -> bool:
     """Treat row one as a header only when its contents provide clear evidence."""
-    rows = csv.reader(io.StringIO(text))
+    rows = csv.reader(io.StringIO(text), delimiter=delimiter)
     first = next(rows, [])
     second = next(rows, [])
     common_labels = {
@@ -43,7 +79,12 @@ def _detect_header(text: str) -> bool:
         "revenue",
     }
     normalized = [cell.strip().lower().replace(" ", "_") for cell in first]
-    label_shaped = all(re.fullmatch(r"[a-z_][a-z0-9_-]*", cell) for cell in normalized)
+    label_shaped = all(
+        cell
+        and (cell[0].isalpha() or cell[0] == "_")
+        and all(char.isalnum() or char in "_-" or unicodedata.category(char).startswith("M") for char in cell)
+        for cell in normalized
+    )
     visibly_header_shaped = label_shaped and all(cell.strip() == cell.strip().lower() for cell in first)
     data_shaped_second_row = any(
         re.fullmatch(r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?", cell.strip())
@@ -180,19 +221,14 @@ def analyze(
 ) -> dict:
     if len(content) > MAX_BYTES:
         raise ValueError("CSV exceeds the 10 MB limit.")
-    try:
-        text = content.decode("utf-8-sig")
-    except UnicodeDecodeError as exc:
-        raise ValueError("Use a UTF-8 encoded CSV file.") from exc
+    text, encoding = _decode(content)
     if "\x00" in text:
         raise ValueError("The file contains binary data.")
-    first_physical_line = text.splitlines()[0] if text.splitlines() else ""
-    if "," not in first_physical_line and (";" in first_physical_line or "\t" in first_physical_line):
-        raise ValueError("This file appears to use a semicolon or tab delimiter. Export it as comma-separated CSV.")
+    delimiter = _detect_delimiter(text)
     if header_mode not in {"auto", "present", "absent"}:
         raise ValueError("header_mode must be auto, present, or absent.")
     try:
-        reader = csv.reader(io.StringIO(text), strict=True)
+        reader = csv.reader(io.StringIO(text), delimiter=delimiter, strict=True)
         all_rows = list(reader)
         if not all_rows:
             raise ValueError("The CSV is empty or malformed.")
@@ -201,7 +237,7 @@ def analyze(
             raise ValueError("Maximum 100 columns supported.")
         if any(len(row) != width for row in all_rows):
             raise ValueError("Every row must have the same number of fields.")
-        detected_header = _detect_header(text)
+        detected_header = _detect_header(text, delimiter)
         use_header = detected_header if header_mode == "auto" else header_mode == "present"
         if use_header:
             headers = [h.strip() for h in all_rows[0]]
@@ -462,6 +498,8 @@ def analyze(
             "analyzed_rows": n,
             "preview_rows": min(n, 100),
             "method_version": "0.7.1",
+            "encoding": encoding,
+            "delimiter": DELIMITERS[delimiter],
             "calculation_mode": "deterministic",
             "data_values_generated": False,
         },

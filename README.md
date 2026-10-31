@@ -14,7 +14,7 @@ The platform supports account-free analysis, structural quality metrics, busines
 
 - No sign-in: analysis, review, and approval work without an account. Only Nexus Main uses accounts.
 - One-step CSV upload with source details, business rules, and approval available after analysis.
-- UTF-8 CSV preview, schema inference, governed names and type overrides.
+- CSV preview (UTF-8, UTF-16, Thai Windows-874; comma, semicolon, tab or pipe delimiters detected and recorded), schema inference, governed names and type overrides.
 - Missing cells, duplicates, numeric statistics, IQR outliers, Pearson correlations, and adaptive charts.
 - Transparent Completeness, Consistency, Uniqueness, Validity, and Overall scores.
 - Per-column required, allowed-value, minimum, and maximum business rules.
@@ -135,6 +135,6 @@ No approved product screenshots are checked into this repository. Demonstrations
 - Durable organization audit storage with customer-managed retention and verification keys.
 - Identity, SSO, and role-based approval, if the service is ever used for governed workflows.
 - Approved encrypted object storage for files larger than 4 MiB.
-- Saved policy templates, custom missing markers, delimiters, encodings, XLSX, and time-series analysis.
+- Saved policy templates, custom missing markers, XLSX, and time-series analysis.
 
 

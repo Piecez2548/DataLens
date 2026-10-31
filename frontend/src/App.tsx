@@ -372,7 +372,7 @@ export default function App() {
                 <ArrowUpRight size={17} />
               </button>
               <small>
-                UTF-8 CSV · up to {MAX_UPLOAD_MB} MB · 100,000 rows · 100
+                CSV (UTF-8, Thai Windows-874, UTF-16; comma, semicolon, tab or pipe) · up to {MAX_UPLOAD_MB} MB · 100,000 rows · 100
                 columns
               </small>
             </section>
@@ -412,6 +412,7 @@ export default function App() {
                 <small>
                   SHA-256 {data.provenance.sha256.slice(0, 12)}… · Method v
                   {data.provenance.method_version} ·{" "}
+                  {data.provenance.encoding} · {data.provenance.delimiter} ·{" "}
                   {fmt(data.provenance.input_bytes)} bytes
                 </small>
               </div>
