@@ -1,4 +1,4 @@
-import type { Analysis, AuditEvent } from "./types";
+import type { Analysis, AuditEvent, FollowUps, SheetSummary } from "./types";
 import { issueKindLabels } from "./issueExport";
 import { getLanguage, t, tReason } from "./i18n";
 
@@ -13,7 +13,9 @@ const escapeHtml = (value: unknown) =>
 const number = (value: number) =>
   value.toLocaleString(undefined, { maximumFractionDigits: 2 });
 
-function buildReport(data: Analysis, auditEvents: AuditEvent[]) {
+export type ReportExtras = { followUps?: FollowUps; sheets?: SheetSummary[] };
+
+function buildReport(data: Analysis, auditEvents: AuditEvent[], extras: ReportExtras = {}) {
   const generatedAt = new Date().toLocaleString();
   const approved = auditEvents.some(
     (event) => event.action === "analysis.approved" && event.analysis_id === data.governance.analysis_id,
@@ -72,6 +74,19 @@ function buildReport(data: Analysis, auditEvents: AuditEvent[]) {
         .join("")}</tbody></table>${entry.total > shown.length ? `<p>First ${shown.length} of ${number(entry.total)} shown. Use the issue-list export for the full list.</p>` : ""}`;
     })
     .join("");
+  const followUpRows = Object.entries(extras.followUps ?? {})
+    .filter(([kind, item]) => (data.issue_samples.kinds[kind]?.total ?? 0) > 0 && (item.owner || item.due || item.note))
+    .map(
+      ([kind, item]) =>
+        `<tr><td>${escapeHtml(t(issueKindLabels[kind] ?? kind))}</td><td>${number(data.issue_samples.kinds[kind].total)}</td><td>${escapeHtml(item.owner)}</td><td>${escapeHtml(item.due)}</td><td>${escapeHtml(item.note)}</td></tr>`,
+    )
+    .join("");
+  const sheetRows = (extras.sheets ?? [])
+    .map(
+      (item) =>
+        `<tr><td>${escapeHtml(item.sheet)}</td><td>${item.error ? `<em>${escapeHtml(item.error)}</em>` : `${number(item.rows)} × ${number(item.columns)}`}</td><td>${item.error ? "" : escapeHtml(t(item.status))}</td><td>${item.error ? "" : number(item.issues)}</td><td>${item.error ? "" : escapeHtml(Object.entries(item.scores).map(([label, score]) => `${label} ${score === null ? "N/A" : `${number(score)}%`}`).join(" · "))}</td></tr>`,
+    )
+    .join("");
   const auditRows = auditEvents
     .map(
       (event) =>
@@ -90,6 +105,8 @@ function buildReport(data: Analysis, auditEvents: AuditEvent[]) {
 <section><h2>${escapeHtml(t(data.executive.status))}</h2><p class="summary">${escapeHtml(executive.message)}</p><div class="dataset"><div><span>${t("Rows")}</span><strong>${number(data.rows)}</strong></div><div><span>${t("Columns")}</span><strong>${number(data.column_count)}</strong></div><div><span>${t("Items to review")}</span><strong>${number(data.executive.issue_count)}</strong></div></div></section>
 <section><h2>${t("Quality scorecard")}</h2><div class="scores">${scoreCards}</div></section>
 <section><h2>${t("Priority findings")}</h2>${issues}</section>
+${followUpRows ? `<section><h2>${t("Follow-up plan")}</h2><table><thead><tr><th>${t("Issue type")}</th><th>${t("Count")}</th><th>${t("Owner")}</th><th>${t("Due date")}</th><th>${t("Note")}</th></tr></thead><tbody>${followUpRows}</tbody></table></section>` : ""}
+${sheetRows ? `<section><h2>${t("All sheets")}</h2><table><thead><tr><th>${t("Worksheet")}</th><th>${t("Rows")} × ${t("Columns")}</th><th>${t("Status")}</th><th>${t("Items to review")}</th><th>${t("Quality scorecard")}</th></tr></thead><tbody>${sheetRows}</tbody></table></section>` : ""}
 <section><h2>${t("Analytical signals")}</h2>${signals}</section>
 ${outlierRows ? `<section><h2>${t("Potential outliers")}</h2><table><thead><tr><th>${t("Column")}</th><th>${t("Count")}</th><th>Q1</th><th>Q3</th></tr></thead><tbody>${outlierRows}</tbody></table></section>` : ""}
 ${locationRows ? `<section><h2>${t("Where to act")}</h2>${locationRows}</section>` : ""}
@@ -104,8 +121,8 @@ ${ruleRows ? `<section><h2>${t("Business validation rules")}</h2><table><thead><
   return { html, safeName: safeName || "dataset" };
 }
 
-export function downloadExecutiveReport(data: Analysis, auditEvents: AuditEvent[]) {
-  const { html, safeName } = buildReport(data, auditEvents);
+export function downloadExecutiveReport(data: Analysis, auditEvents: AuditEvent[], extras?: ReportExtras) {
+  const { html, safeName } = buildReport(data, auditEvents, extras);
   const blob = new Blob([html], { type: "text/html;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -119,8 +136,8 @@ export function downloadExecutiveReport(data: Analysis, auditEvents: AuditEvent[
 
 /** Opens the brief in a new tab and starts the browser print dialog, where "Save as PDF" is available.
  * The page's own button uses an inline handler that the site CSP blocks, so printing is triggered from here. */
-export function printExecutiveReport(data: Analysis, auditEvents: AuditEvent[]): boolean {
-  const { html } = buildReport(data, auditEvents);
+export function printExecutiveReport(data: Analysis, auditEvents: AuditEvent[], extras?: ReportExtras): boolean {
+  const { html } = buildReport(data, auditEvents, extras);
   const url = URL.createObjectURL(new Blob([html], { type: "text/html;charset=utf-8" }));
   const popup = window.open(url, "_blank");
   if (!popup) {

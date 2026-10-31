@@ -15,7 +15,10 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import type { Analysis, AuditEvent, BusinessRule } from "./types";
+import type { Analysis, AuditEvent, BusinessRule, FollowUp, FollowUps, SheetSummary } from "./types";
+import { buildSnapshot, downloadSnapshot, isSnapshotName, parseSnapshot } from "./snapshot";
+import { forgetSettings, loadSettings, saveSettings, type SavedSettings } from "./savedSettings";
+import SheetOverview from "./SheetOverview";
 import {
   GovernancePanel,
   UploadPolicy,
@@ -37,6 +40,7 @@ type SchemaOptions = {
   sheet?: string;
   header_row?: number | null;
   date_order?: "dmy" | "mdy";
+  year_era?: "be" | "ce";
   business_key?: string[];
   group_by?: { by: string; measure?: string } | null;
 };
@@ -119,7 +123,13 @@ export default function App() {
   const [dateOrder, setDateOrder] = useState<"" | "dmy" | "mdy">("");
   const [keyColumns, setKeyColumns] = useState<string[]>([]);
   const [groupBy, setGroupBy] = useState({ by: "", measure: "" });
+  const [yearEra, setYearEra] = useState<"" | "be" | "ce">("");
+  const [followUps, setFollowUps] = useState<FollowUps>({});
+  const [sheetOverview, setSheetOverview] = useState<SheetSummary[]>([]);
+  const [snapshotInfo, setSnapshotInfo] = useState("");
+  const [restored, setRestored] = useState(false);
   const [other, setOther] = useState<Analysis | null>(null);
+  const snapshotInput = useRef<HTMLInputElement>(null);
   const compareInput = useRef<HTMLInputElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const uploadTrigger = useRef<HTMLButtonElement>(null);
@@ -152,6 +162,7 @@ export default function App() {
             ? undefined
             : (schema?.header_row ?? (headerRow ? Number(headerRow) : undefined)),
         date_order: schema?.date_order ?? (dateOrder || undefined),
+        year_era: schema?.year_era ?? (yearEra || undefined),
         business_key: schema?.business_key ?? (keyColumns.length ? keyColumns : undefined),
         group_by:
           schema?.group_by === null
@@ -224,24 +235,77 @@ export default function App() {
     setError("");
     try {
       const fresh = file !== lastFile;
-      const sheet = schema?.sheet ?? (fresh ? undefined : sheetName || undefined);
-      const result = await requestAnalysis(
-        file,
-        headerMode,
-        {
-          ...schema,
-          sheet,
-          ...(fresh ? { business_key: [], group_by: null } : {}),
-        },
-        attested,
-      );
+      const remembered = fresh && !schema ? loadSettings(file.name) : null;
+      const attempt = (extra: SavedSettings | null) =>
+        requestAnalysis(
+          file,
+          headerMode,
+          {
+            ...schema,
+            ...extra,
+            sheet: schema?.sheet ?? extra?.sheet ?? (fresh ? undefined : sheetName || undefined),
+            ...(fresh
+              ? { business_key: schema?.business_key ?? extra?.business_key ?? [], group_by: extra?.group_by ?? null }
+              : {}),
+          },
+          attested,
+        );
+      let result: Analysis;
+      let used: SavedSettings | null = remembered;
+      try {
+        result = await attempt(remembered);
+      } catch (caught) {
+        if (!remembered) throw caught;
+        // Remembered choices no longer fit this file; start from the defaults.
+        forgetSettings(file.name);
+        used = null;
+        result = await attempt(null);
+      }
+      setRestored(Boolean(used));
+      if (used) {
+        setHeaderRow(used.header_row ? String(used.header_row) : "");
+        setDateOrder(used.date_order ?? "");
+        setYearEra(used.year_era ?? "");
+        setMarkerText((used.missing_markers ?? []).join(", "));
+      }
       setSheetName(result.provenance.sheet ?? "");
       if (schema?.business_key) setKeyColumns(schema.business_key);
       if (fresh || schema?.sheet || schema?.header_row) {
-        setKeyColumns(schema?.business_key ?? []);
-        setGroupBy({ by: "", measure: "" });
+        setKeyColumns(schema?.business_key ?? used?.business_key ?? []);
+        setGroupBy(
+          used?.group_by
+            ? { by: used.group_by.by, measure: used.group_by.measure ?? "" }
+            : { by: "", measure: "" },
+        );
       }
-      if (fresh) setBusinessRules({});
+      if (fresh || schema?.sheet || schema?.header_row) {
+        setSheetOverview([]);
+      }
+      if (fresh) {
+        setBusinessRules({});
+        setFollowUps({});
+      }
+      setSnapshotInfo("");
+      const nextSettings: SavedSettings = {};
+      const effectiveHeader = schema?.header_row ?? used?.header_row ?? (headerRow ? Number(headerRow) : undefined);
+      if (effectiveHeader) nextSettings.header_row = effectiveHeader;
+      const effectiveOrder = schema?.date_order ?? used?.date_order ?? (dateOrder || undefined);
+      if (effectiveOrder) nextSettings.date_order = effectiveOrder;
+      const effectiveEra = schema?.year_era ?? used?.year_era ?? (yearEra || undefined);
+      if (effectiveEra) nextSettings.year_era = effectiveEra;
+      const effectiveKey = fresh ? (schema?.business_key ?? used?.business_key ?? []) : (schema?.business_key ?? keyColumns);
+      if (effectiveKey.length) nextSettings.business_key = effectiveKey;
+      const effectiveMarkers = schema?.missing_markers ?? used?.missing_markers ?? parseMarkers(markerText);
+      if (effectiveMarkers.length) nextSettings.missing_markers = effectiveMarkers;
+      if ((result.provenance.sheets?.length ?? 0) > 1 && result.provenance.sheet) {
+        nextSettings.sheet = result.provenance.sheet;
+      }
+      const effectiveGroup =
+        schema?.group_by === null
+          ? undefined
+          : (schema?.group_by ?? (fresh ? used?.group_by : groupBy.by ? { by: groupBy.by, measure: groupBy.measure || undefined } : undefined));
+      if (effectiveGroup) nextSettings.group_by = effectiveGroup;
+      saveSettings(file.name, nextSettings);
       setData(result);
       setAuditEvents([result.audit_event]);
       setLastFile(file);
@@ -280,6 +344,77 @@ export default function App() {
       await upload(new File([blob], path, { type }), "auto", undefined, true);
     } catch {
       setError("The sample file could not be loaded. Please try again.");
+    }
+  }
+  async function openSnapshot(file: File) {
+    if (busy) return;
+    setError("");
+    try {
+      const snapshot = parseSnapshot(await file.text());
+      const result = snapshot.analysis;
+      setData(result);
+      setOther(null);
+      setLastFile(null);
+      setAuditEvents(snapshot.audit_events.length ? snapshot.audit_events : [result.audit_event]);
+      setFollowUps(snapshot.follow_ups);
+      setSheetOverview(snapshot.sheet_overview);
+      setSheetName(result.provenance.sheet ?? "");
+      setColumnNames(result.columns.map((item) => item.name));
+      setColumnTypes(result.columns.map((item) => (item.type_overridden ? item.type : "auto")));
+      setSelected(result.columns.find((c) => c.type === "numeric")?.name ?? result.columns[0].name);
+      setRestored(false);
+      setPage(0);
+      setTab("Overview");
+      setSnapshotInfo(snapshot.saved_at);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "This is not a DataLens snapshot file.");
+    } finally {
+      if (snapshotInput.current) snapshotInput.current.value = "";
+    }
+  }
+  function routeFile(file: File) {
+    if (isSnapshotName(file.name)) void openSnapshot(file);
+    else void upload(file);
+  }
+  async function analyzeAllSheets() {
+    const names = data?.provenance.sheets;
+    if (busy || !lastFile || !names) return;
+    setBusy(true);
+    setError("");
+    try {
+      const rows: SheetSummary[] = [];
+      for (const name of names.slice(0, 12)) {
+        try {
+          const result = await requestAnalysis(lastFile, "auto", {
+            sheet: name,
+            header_row: null,
+            business_rules: {},
+            business_key: [],
+            group_by: null,
+          });
+          rows.push({
+            sheet: name,
+            rows: result.rows,
+            columns: result.column_count,
+            status: result.executive.status,
+            issues: result.executive.issue_count,
+            scores: result.scores,
+          });
+        } catch (caught) {
+          rows.push({
+            sheet: name,
+            rows: 0,
+            columns: 0,
+            status: "",
+            issues: 0,
+            scores: {},
+            error: caught instanceof Error ? caught.message : "Could not analyze this sheet.",
+          });
+        }
+      }
+      setSheetOverview(rows);
+    } finally {
+      setBusy(false);
     }
   }
   async function recordAudit(action: "review" | "approve", note: string) {
@@ -324,6 +459,11 @@ export default function App() {
     setKeyColumns([]);
     setGroupBy({ by: "", measure: "" });
     setMarkerText("");
+    setYearEra("");
+    setFollowUps({});
+    setSheetOverview([]);
+    setSnapshotInfo("");
+    setRestored(false);
     setLastFile(null);
     setColumnNames([]);
     setColumnTypes([]);
@@ -424,7 +564,18 @@ export default function App() {
             aria-label={t("Upload CSV file")}
             onChange={(e) => {
               const f = e.target.files?.[0];
-              if (f) void upload(f);
+              if (f) routeFile(f);
+            }}
+          />
+          <input
+            ref={snapshotInput}
+            type="file"
+            accept=".json,application/json"
+            className="sr-only"
+            aria-label={t("Open a saved snapshot")}
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void openSnapshot(f);
             }}
           />
           <input
@@ -465,7 +616,7 @@ export default function App() {
               onDrop={(e) => {
                 e.preventDefault();
                 const f = e.dataTransfer.files[0];
-                if (f) void upload(f);
+                if (f) routeFile(f);
               }}
             >
               <div className="upload-icon">
@@ -497,6 +648,15 @@ export default function App() {
                   </button>
                   <button disabled={busy} onClick={() => void trySample("orders.json", "application/json")}>
                     {t("Orders records (JSON)")}
+                  </button>
+                </div>
+              </div>
+              <div className="samples" role="group" aria-label={t("Open a saved snapshot")}>
+                <strong>{t("Received a snapshot?")}</strong>
+                <span>{t("Open a .datalens.json file someone saved to see their analysis. No upload to the analysis service is needed.")}</span>
+                <div>
+                  <button disabled={busy} onClick={() => snapshotInput.current?.click()}>
+                    {t("Open a saved snapshot")}
                   </button>
                 </div>
               </div>
@@ -545,19 +705,25 @@ export default function App() {
                     <FileSpreadsheet size={15} />{t("Compare with another file")}</button>
                   <button
                     className="report-button"
-                    onClick={() => downloadExecutiveReport(data, auditEvents)}
+                    onClick={() => downloadExecutiveReport(data, auditEvents, { followUps, sheets: sheetOverview })}
                   >
                     <Download size={15} /> {approved ? t("Export approved brief") : t("Export draft profile")}
                   </button>
                   <button
                     className="report-button"
                     onClick={() => {
-                      if (!printExecutiveReport(data, auditEvents)) {
+                      if (!printExecutiveReport(data, auditEvents, { followUps, sheets: sheetOverview })) {
                         setError("Your browser blocked the report window. Allow pop-ups for this site and try again.");
                       }
                     }}
                   >
                     <Download size={15} /> {t("Print / Save as PDF")}
+                  </button>
+                  <button
+                    className="report-button"
+                    onClick={() => downloadSnapshot(buildSnapshot(data, auditEvents, followUps, sheetOverview))}
+                  >
+                    <Download size={15} /> {t("Save snapshot")}
                   </button>
                   <span className="analyzed">
                     <Check size={14} />{t("Analysis complete")}</span>
@@ -596,6 +762,36 @@ export default function App() {
               </nav>
               {tab === "Overview" && (
                 <>
+                  {snapshotInfo && (
+                    <section className="header-notice" role="status">
+                      <FileSpreadsheet size={20} />
+                      <div>
+                        <strong>{t("Opened from a saved snapshot")}</strong>
+                        <p>
+                          {tf("Saved {when}. The original file is not here, so settings cannot be changed and the analysis cannot be re-run; open the file again to do that.", {
+                            when: snapshotInfo === "-" ? "" : new Date(snapshotInfo).toLocaleString(),
+                          })}
+                        </p>
+                      </div>
+                    </section>
+                  )}
+                  {restored && lastFile && (
+                    <section className="header-notice" role="status">
+                      <Check size={20} />
+                      <div>
+                        <strong>{t("Settings from last time were applied")}</strong>
+                        <p>{t("Header row, business key, date order and similar choices you made for a file with this name were reused. They are kept in this browser only.")}</p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          forgetSettings(lastFile.name);
+                          setRestored(false);
+                        }}
+                      >
+                        {t("Don't remember these")}
+                      </button>
+                    </section>
+                  )}
                   <ExecutiveBrief data={data} />
                   {data.provenance.sheets && data.provenance.sheets.length > 1 && (
                     <section className="header-notice" role="status">
@@ -621,7 +817,23 @@ export default function App() {
                           <option key={name}>{name}</option>
                         ))}
                       </select>
+                      <button disabled={busy || !lastFile} onClick={() => void analyzeAllSheets()}>
+                        {t("Analyze all sheets")}
+                      </button>
                     </section>
+                  )}
+                  {sheetOverview.length > 0 && (
+                    <SheetOverview
+                      sheets={sheetOverview}
+                      current={data.provenance.sheet ?? ""}
+                      busy={busy}
+                      canOpen={Boolean(lastFile)}
+                      onOpen={(name) => {
+                        if (!lastFile) return;
+                        setBusinessRules({});
+                        void upload(lastFile, "auto", { sheet: name, business_rules: {} });
+                      }}
+                    />
                   )}
                   {data.provenance.header_row_suggestion && !headerRow && (
                     <section className="header-notice" role="status">
@@ -675,6 +887,36 @@ export default function App() {
                           }}
                         >
                           {order === "dmy" ? "Day / month / year" : "Month / day / year"}
+                        </button>
+                      ))}
+                    </section>
+                  )}
+                  {data.provenance.two_digit_years > 0 && !data.provenance.year_era && (
+                    <section className="header-notice" role="status">
+                      <CircleAlert size={20} />
+                      <div>
+                        <strong>{tf("{count} dates have a two-digit year", { count: data.provenance.two_digit_years })}</strong>
+                        <p>{t("A year such as 67 could be 2567 (Buddhist Era) or 1967 / 2067, so these dates were not read. Choose how they are written.")}</p>
+                      </div>
+                      {(["be", "ce"] as const).map((era) => (
+                        <button
+                          key={era}
+                          disabled={busy || !lastFile}
+                          onClick={() => {
+                            if (!lastFile) return;
+                            setYearEra(era);
+                            void upload(lastFile, data.header.used ? "present" : "absent", {
+                              year_era: era,
+                              column_names: columnNames,
+                              type_overrides: Object.fromEntries(
+                                columnNames.flatMap((name, index) =>
+                                  columnTypes[index] === "auto" ? [] : [[name, columnTypes[index]]],
+                                ),
+                              ),
+                            });
+                          }}
+                        >
+                          {era === "be" ? t("Buddhist Era (67 = 2567)") : t("Christian Era (67 = 2067 or 1967)")}
                         </button>
                       ))}
                     </section>
@@ -874,7 +1116,15 @@ export default function App() {
                   />
                 </>
               )}
-              {tab === "Issues" && <IssueExplorer data={data} />}
+              {tab === "Issues" && (
+                <IssueExplorer
+                  data={data}
+                  followUps={followUps}
+                  onFollowUp={(kind: string, value: FollowUp) =>
+                    setFollowUps((current) => ({ ...current, [kind]: value }))
+                  }
+                />
+              )}
               {tab === "Summary" && (
                 <GroupSummary
                   data={data}

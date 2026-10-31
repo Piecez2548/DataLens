@@ -154,6 +154,8 @@ def test_provenance_fingerprints_the_exact_input_without_generating_values():
         "header_row_suggestion": None,
         "date_order": "dmy",
         "date_order_ambiguous": False,
+        "two_digit_years": 0,
+        "year_era": None,
         "encoding": "utf-8",
         "delimiter": "comma",
         "missing_markers": [],
@@ -684,3 +686,23 @@ def test_named_month_dates_in_english_and_thai_are_dates():
     assert column["type"] == "datetime"
     assert column["mismatches"] == 0
     assert column["invalid"] == 1
+
+
+def test_two_digit_years_are_reported_and_resolved_only_when_the_era_is_chosen():
+    csv_bytes = b"id,date\n1,05/06/67\n2,25/12/67\n3,01/01/68\n"
+    plain = analyze(csv_bytes, "d.csv")
+    assert plain["provenance"]["two_digit_years"] == 3
+    assert plain["columns"][1]["type"] != "datetime"
+    buddhist = analyze(csv_bytes, "d.csv", year_era="be")
+    assert buddhist["columns"][1]["type"] == "datetime"
+    assert buddhist["columns"][1]["invalid"] == 0
+    assert buddhist["timeseries"]["first"] == "2024-06-05"
+    christian = analyze(csv_bytes, "d.csv", year_era="ce")
+    assert christian["timeseries"]["first"] == "2067-06-05"
+
+
+def test_year_era_must_be_known():
+    import pytest
+
+    with pytest.raises(ValueError):
+        analyze(b"a,b\n1,2\n", "d.csv", year_era="xx")

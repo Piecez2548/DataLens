@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Snapshots: "Save snapshot" writes the finished analysis, follow-ups and sheet overview to a `.datalens.json` file. Anyone can open it from the home page (or by dropping it in) without the original file or any server storage.
+- Follow-up plan: owner, due date and note per issue type, shown in the executive brief and included in the Excel issue list, JSON export and snapshot.
+- All sheets: a workbook's sheets can be analyzed in one step and compared in a table (also in the brief); any sheet can be opened from it.
+- Remembered settings per file name (header row, business key, date order, year era, missing markers, sheet, summary grouping), kept in the browser only, with a "Don't remember these" button.
+- Two-digit years: the page reports them and the user chooses Buddhist Era or Christian Era instead of the app guessing.
+
 - Try a sample: three fictional files (Thai sales CSV, two-sheet Excel workbook with a title row, nested JSON) can be opened from the home page to demonstrate every input type without uploading anything.
 - More of the interface is translated in Thai mode: column types and formats, status and counts, chart captions, review-record text, form labels and accessible names.
 - Outlier ranges in issue reasons use readable thousands-separated numbers; the printed brief spaces the "Where to act" tables.

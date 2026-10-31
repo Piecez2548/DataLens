@@ -1,7 +1,7 @@
 import { t, tf, tReason } from "./i18n";
 import { useState } from "react";
 import { Download } from "lucide-react";
-import type { Analysis } from "./types";
+import type { Analysis, FollowUp, FollowUps } from "./types";
 import {
   downloadIssuesCsv,
   downloadIssuesJson,
@@ -11,7 +11,15 @@ import {
 
 const fmt = (n: number) => n.toLocaleString();
 
-export default function IssueExplorer({ data }: { data: Analysis }) {
+export default function IssueExplorer({
+  data,
+  followUps,
+  onFollowUp,
+}: {
+  data: Analysis;
+  followUps: FollowUps;
+  onFollowUp: (kind: string, value: FollowUp) => void;
+}) {
   const kinds = Object.entries(data.issue_samples.kinds).filter(
     ([, entry]) => entry.total > 0,
   );
@@ -19,6 +27,7 @@ export default function IssueExplorer({ data }: { data: Analysis }) {
   const [column, setColumn] = useState("");
   const label = data.issue_samples.row_label;
   const entry = data.issue_samples.kinds[chosen];
+  const current: FollowUp = followUps[chosen] ?? { owner: "", due: "", note: "" };
   const examples = (entry?.examples ?? []).filter(
     (item) => !column || item.column === column,
   );
@@ -45,9 +54,9 @@ export default function IssueExplorer({ data }: { data: Analysis }) {
         <div className="file-actions">
           <button className="report-button" onClick={() => downloadIssuesCsv(data)}>
             <Download size={15} />{t("Export issue list (CSV)")}</button>
-          <button className="report-button" onClick={() => downloadIssuesXlsx(data)}>
+          <button className="report-button" onClick={() => downloadIssuesXlsx(data, followUps)}>
             <Download size={15} />{t("Export issue list (Excel)")}</button>
-          <button className="report-button" onClick={() => downloadIssuesJson(data)}>
+          <button className="report-button" onClick={() => downloadIssuesJson(data, followUps)}>
             <Download size={15} />{t("Export (JSON)")}</button>
         </div>
       </div>
@@ -67,6 +76,30 @@ export default function IssueExplorer({ data }: { data: Analysis }) {
           </button>
         ))}
       </div>
+      {entry && (
+        <fieldset className="follow-up">
+          <legend>{t("Follow-up for this issue type")}</legend>
+          <label>{t("Owner")}<input
+              maxLength={80}
+              value={current.owner}
+              onChange={(event) => onFollowUp(chosen, { ...current, owner: event.target.value })}
+            />
+          </label>
+          <label>{t("Due date")}<input
+              type="date"
+              value={current.due}
+              onChange={(event) => onFollowUp(chosen, { ...current, due: event.target.value })}
+            />
+          </label>
+          <label className="wide">{t("Note")}<input
+              maxLength={500}
+              value={current.note}
+              onChange={(event) => onFollowUp(chosen, { ...current, note: event.target.value })}
+            />
+          </label>
+          <small>{t("Included in the executive brief, the Excel issue list, the JSON export and the snapshot. Not sent to the server.")}</small>
+        </fieldset>
+      )}
       {columns.length > 1 && (
         <label className="issue-filter">{t("Column")}<select value={column} onChange={(event) => setColumn(event.target.value)}>
             <option value="">{t("All columns")}</option>

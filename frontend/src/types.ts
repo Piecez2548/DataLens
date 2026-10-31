@@ -137,6 +137,8 @@ export interface Analysis {
     header_row_suggestion: number | null;
     date_order: "dmy" | "mdy";
     date_order_ambiguous: boolean;
+    two_digit_years: number;
+    year_era: "be" | "ce" | null;
     encoding: string;
     delimiter: string | null;
     missing_markers: string[];
@@ -160,4 +162,22 @@ export interface BusinessRule {
   min?: number;
   max?: number;
   allowed_values?: string[];
+}
+
+/** Who deals with one kind of issue, by when. Typed by the analyst; never sent to the server. */
+export interface FollowUp {
+  owner: string;
+  due: string;
+  note: string;
+}
+export type FollowUps = Record<string, FollowUp>;
+
+export interface SheetSummary {
+  sheet: string;
+  rows: number;
+  columns: number;
+  status: string;
+  issues: number;
+  scores: Record<string, number | null>;
+  error?: string;
 }

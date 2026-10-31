@@ -23,7 +23,7 @@ Use the **Try a sample** buttons on the home page for repeatable demonstrations.
 
 ### Calculations
 - Numbers: `1,234.50`, `฿100`, `300 บาท`, `15%`, `(500)`, `1.234,50` and `12,5` are numeric; `$$5` and `--3` stay text.
-- Dates: `31/12/2567`, `2025-03-15`, `5 Jan 2024`, `9 มกราคม 2567`. A calendar-impossible date such as `31/02/2568` is invalid. When every date could be day/month or month/day, the confirmation notice appears. Two-digit years are not interpreted.
+- Dates: `31/12/2567`, `2025-03-15`, `5 Jan 2024`, `9 มกราคม 2567`. A calendar-impossible date such as `31/02/2568` is invalid. When every date could be day/month or month/day, the confirmation notice appears. Two-digit years (`05/06/67`) are reported with a Buddhist Era / Christian Era choice; until chosen they are not read as dates, and `67` becomes 2024 (BE) or 2067 (CE).
 - Missing markers: enter `NA, N/A, -` under Dataset setup and confirm the missing count changes and the markers appear in provenance.
 - Business key: choose the order-number column in `sales-th.csv` and confirm the repeated order number is a high-priority finding with the row it repeats.
 - Thai ID and phone columns are flagged as possible personal data and block approval.
@@ -35,6 +35,12 @@ Use the **Try a sample** buttons on the home page for repeatable demonstrations.
 - Open **Summary**, group by a column with a numeric measure, and compare one group's sum with an independent filter. Export CSV and Excel.
 - Use **Compare with another file** with a corrected copy and confirm the resolved, new and unchanged counts.
 - Use **Print / Save as PDF**. If the browser blocks the window, an error explains how to allow pop-ups.
+
+### Handing results on
+- Issues tab: fill owner, due date and note for an issue type; confirm they appear in the exported brief ("Follow-up plan"), the Excel issue list, the JSON export and the snapshot.
+- Save snapshot, clear the dataset and open the `.datalens.json` file: the analysis, follow-ups and sheet overview return, with a notice that the original file is absent. A file that is not a snapshot is rejected with a clear message.
+- Re-upload a file name used before: header row, business key, date order, year era, markers, sheet and summary grouping are reused and a notice offers "Don't remember these".
+- Workbook with several sheets: "Analyze all sheets" lists rows, columns, status, items to review and scores per sheet (up to 12) and each sheet can be opened.
 
 ### Language, layout and limits
 - Switch to Thai and walk through every tab. Remaining English should be limited to data values, file names and technical identifiers.

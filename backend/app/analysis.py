@@ -115,6 +115,19 @@ DATE_DAY_MONTH_NAME = re.compile(rf"(\d{{1,2}})[ \-/.]*({MONTH_TOKEN})[ \-/.,]*(
 DATE_MONTH_NAME_DAY = re.compile(rf"({MONTH_TOKEN})[ .]+(\d{{1,2}}),?[ ]+(\d{{4}})")
 
 
+TWO_DIGIT_YEAR_DATE = re.compile(r"(\d{1,2})([-/.])(\d{1,2})\2(\d{2})((?:[T ]\d{1,2}:\d{2}(?::\d{2})?)?)")
+
+
+def _expand_year(value: str, era: str) -> str:
+    """D/M/YY -> D/M/YYYY. Buddhist Era reads YY as 25YY; Christian Era reads 00-69 as 20YY and 70-99 as 19YY."""
+    match = TWO_DIGIT_YEAR_DATE.fullmatch(value)
+    if not match:
+        return value
+    short = int(match[4])
+    year = 2500 + short if era == "be" else (2000 + short if short <= 69 else 1900 + short)
+    return f"{match[1]}{match[2]}{match[3]}{match[2]}{year}{match[5]}"
+
+
 def _month_number(token: str) -> int | None:
     return MONTH_NAMES.get(token.strip().lower().rstrip("."))
 
@@ -628,6 +641,7 @@ def analyze(
     date_order: str | None = None,
     business_key: list[str] | None = None,
     group_by: dict | None = None,
+    year_era: str | None = None,
 ) -> dict:
     if len(content) > MAX_BYTES:
         raise ValueError("CSV exceeds the 10 MB limit.")
@@ -714,6 +728,15 @@ def analyze(
     normalized = frame.apply(lambda col: col.str.strip().replace("", None))
     if marker_set:
         normalized = normalized.apply(lambda col: col.where(~col.str.lower().isin(marker_set), None))
+    if year_era not in {None, "be", "ce"}:
+        raise ValueError("year_era must be be or ce.")
+    two_digit_years = 0
+    for header in headers:
+        column = normalized[header]
+        found = _map_unique(column.dropna(), lambda value: bool(TWO_DIGIT_YEAR_DATE.fullmatch(value))).astype(bool)
+        two_digit_years += int(found.sum())
+        if year_era and found.any():
+            normalized[header] = column.map(lambda value: _expand_year(value, year_era) if isinstance(value, str) else value)
     n = len(frame)
     type_overrides = type_overrides or {}
     if not isinstance(type_overrides, dict) or not all(
@@ -1102,6 +1125,8 @@ def analyze(
             "header_row_suggestion": header_row_suggestion,
             "date_order": chosen_date_order,
             "date_order_ambiguous": date_order_ambiguous,
+            "two_digit_years": two_digit_years,
+            "year_era": year_era,
             "analyzed_rows": n,
             "preview_rows": min(n, 100),
             "method_version": "0.7.1",

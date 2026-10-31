@@ -78,6 +78,35 @@ const th: Record<string, string> = {
   "Overall score": "คะแนนรวม",
   "Equal-weight mean of available dimensions.": "ค่าเฉลี่ยถ่วงน้ำหนักเท่ากันของมิติที่มี",
   Overview: "ภาพรวม",
+  "Follow-up for this issue type": "การติดตามสำหรับปัญหาประเภทนี้",
+  "Owner": "ผู้รับผิดชอบ",
+  "Due date": "กำหนดส่ง",
+  "Note": "หมายเหตุ",
+  "Included in the executive brief, the Excel issue list, the JSON export and the snapshot. Not sent to the server.": "จะรวมอยู่ในสรุปผู้บริหาร รายการปัญหา Excel ไฟล์ JSON และสแนปช็อต และไม่ถูกส่งไปที่เซิร์ฟเวอร์",
+  "Follow-up plan": "แผนติดตามงาน",
+  "All sheets": "ทุกชีต",
+  "Each sheet was analyzed on its own with the same settings. Open one to see its details.": "วิเคราะห์แต่ละชีตแยกกันด้วยการตั้งค่าเดียวกัน เปิดชีตที่ต้องการเพื่อดูรายละเอียด",
+  "Shown below": "แสดงอยู่ด้านล่าง",
+  "Open sheet {sheet}": "เปิดชีต {sheet}",
+  "Open": "เปิด",
+  "Open a saved snapshot": "เปิดสแนปช็อตที่บันทึกไว้",
+  "Received a snapshot?": "ได้รับไฟล์สแนปช็อตมาหรือไม่?",
+  "Open a .datalens.json file someone saved to see their analysis. No upload to the analysis service is needed.": "เปิดไฟล์ .datalens.json ที่มีคนบันทึกไว้เพื่อดูผลวิเคราะห์ของเขา ไม่ต้องอัปโหลดไปที่บริการวิเคราะห์",
+  "Save snapshot": "บันทึกสแนปช็อต",
+  "Opened from a saved snapshot": "เปิดจากสแนปช็อตที่บันทึกไว้",
+  "Saved {when}. The original file is not here, so settings cannot be changed and the analysis cannot be re-run; open the file again to do that.": "บันทึกเมื่อ {when} ไม่มีไฟล์ต้นฉบับอยู่ที่นี่ จึงเปลี่ยนการตั้งค่าหรือวิเคราะห์ใหม่ไม่ได้ ถ้าต้องการให้เปิดไฟล์ต้นฉบับอีกครั้ง",
+  "Settings from last time were applied": "ใช้การตั้งค่าครั้งก่อนให้แล้ว",
+  "Header row, business key, date order and similar choices you made for a file with this name were reused. They are kept in this browser only.": "นำค่าที่คุณเลือกไว้สำหรับไฟล์ชื่อนี้มาใช้ซ้ำ เช่น แถวหัวตาราง คีย์ทางธุรกิจ ลำดับวันที่ โดยเก็บไว้ในเบราว์เซอร์นี้เท่านั้น",
+  "Don't remember these": "ไม่ต้องจำค่าเหล่านี้",
+  "Analyze all sheets": "วิเคราะห์ทุกชีต",
+  "{count} dates have a two-digit year": "มี {count} วันที่ที่ใช้ปีสองหลัก",
+  "A year such as 67 could be 2567 (Buddhist Era) or 1967 / 2067, so these dates were not read. Choose how they are written.": "ปีอย่าง 67 อาจเป็น 2567 (พ.ศ.) หรือ 1967 / 2067 จึงยังไม่อ่านเป็นวันที่ กรุณาเลือกว่าเขียนแบบใด",
+  "Buddhist Era (67 = 2567)": "พ.ศ. (67 = 2567)",
+  "Christian Era (67 = 2067 or 1967)": "ค.ศ. (67 = 2067 หรือ 1967)",
+  "This is not a DataLens snapshot file.": "นี่ไม่ใช่ไฟล์สแนปช็อตของ DataLens",
+  "This snapshot is damaged or incomplete.": "สแนปช็อตนี้เสียหายหรือไม่ครบ",
+  "This snapshot file is too large.": "ไฟล์สแนปช็อตนี้ใหญ่เกินไป",
+  "This snapshot was made by a different version of DataLens.": "สแนปช็อตนี้สร้างจาก DataLens คนละเวอร์ชัน",
   "Data quality": "คุณภาพข้อมูล",
   Issues: "ปัญหา",
   Summary: "สรุป",
@@ -383,6 +412,7 @@ const errorRules: [RegExp, (m: RegExpMatchArray) => string][] = [
 
 export function tError(message: string): string {
   if (current !== "th") return message;
+  if (message in th) return th[message];
   for (const [pattern, build] of errorRules) {
     const match = message.match(pattern);
     if (match) return build(match);

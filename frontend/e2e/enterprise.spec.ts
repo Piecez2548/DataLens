@@ -276,3 +276,104 @@ test("sample files demonstrate every input type without uploading anything", asy
   await page.getByRole("button", { name: "Orders records (JSON)" }).click();
   await expect(page.getByText("25 rows · 6 columns")).toBeVisible();
 });
+
+const messyCsv = {
+  name: "messy.csv",
+  mimeType: "text/csv",
+  buffer: Buffer.from("id,team,amount\n1,North,10\n2,,20\n3,South,\n4,South,40\n"),
+};
+
+test("follow-ups and a saved snapshot reach someone who only has the snapshot file", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel(/I am allowed to analyze this file/).check();
+  await page.getByLabel("Upload CSV file").setInputFiles(messyCsv);
+  await expect(page.getByText("4 rows · 3 columns")).toBeVisible();
+
+  const views = page.getByRole("navigation", { name: "Dataset views" });
+  await views.getByRole("button", { name: "Issues" }).click();
+  await page.getByLabel("Owner").fill("Somchai");
+  await page.getByLabel("Due date").fill("2030-01-31");
+  await page.getByLabel("Note").fill("Ask the branch to fill the blanks");
+
+  const [brief] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: /Export draft profile/ }).click(),
+  ]);
+  await brief.saveAs("test-results/followup-brief.html");
+  const html = (await import("node:fs")).readFileSync("test-results/followup-brief.html", "utf8");
+  expect(html).toContain("Follow-up plan");
+  expect(html).toContain("Somchai");
+
+  const [snapshot] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: "Save snapshot" }).click(),
+  ]);
+  expect(snapshot.suggestedFilename()).toBe("messy.datalens.json");
+  await snapshot.saveAs("test-results/messy.datalens.json");
+
+  await page.getByRole("button", { name: "Clear dataset" }).click();
+  await page.getByLabel("Open a saved snapshot", { exact: true }).first().setInputFiles("test-results/messy.datalens.json");
+  await expect(page.getByText("Opened from a saved snapshot")).toBeVisible();
+  await expect(page.getByText("4 rows · 3 columns")).toBeVisible();
+  await views.getByRole("button", { name: "Issues" }).click();
+  await expect(page.getByLabel("Owner")).toHaveValue("Somchai");
+  await expect(page.getByLabel("Note")).toHaveValue("Ask the branch to fill the blanks");
+});
+
+test("rejects a file that is not a snapshot", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel("Open a saved snapshot", { exact: true }).first().setInputFiles({
+    name: "other.datalens.json",
+    mimeType: "application/json",
+    buffer: Buffer.from('{"hello": 1}'),
+  });
+  await expect(page.getByRole("alert")).toContainText("not a DataLens snapshot");
+});
+
+test("remembers the choices made for a file name in this browser", async ({ page }) => {
+  const report = {
+    name: "monthly.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from("Monthly report,\nprepared by finance,\npo,team,amount\nA1,North,10\nA2,South,20\n"),
+  };
+  await page.goto("/");
+  await page.getByLabel(/I am allowed to analyze this file/).check();
+  await page.getByLabel(/Header row/).fill("3");
+  await page.getByLabel("Upload CSV file").setInputFiles(report);
+  await expect(page.getByText("2 rows · 3 columns")).toBeVisible();
+
+  await page.getByRole("button", { name: "Clear dataset" }).click();
+  await page.getByLabel(/I am allowed to analyze this file/).check();
+  await page.getByLabel("Upload CSV file").setInputFiles(report);
+  await expect(page.getByText("2 rows · 3 columns")).toBeVisible();
+  await expect(page.getByText("Settings from last time were applied")).toBeVisible();
+
+  await page.getByRole("button", { name: "Don't remember these" }).click();
+  await expect(page.getByText("Settings from last time were applied")).toBeHidden();
+});
+
+test("asks whether two-digit years are Buddhist or Christian Era", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel(/I am allowed to analyze this file/).check();
+  await page.getByLabel("Upload CSV file").setInputFiles({
+    name: "short-years.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from("id,date\n1,05/06/67\n2,25/12/67\n3,01/01/68\n"),
+  });
+  await expect(page.getByText("3 dates have a two-digit year")).toBeVisible();
+  await page.getByRole("button", { name: /Buddhist Era/ }).click();
+  await expect(page.getByText("3 dates have a two-digit year")).toBeHidden();
+  await expect(page.getByText("Analysis complete")).toBeVisible();
+});
+
+test("shows every sheet of a workbook side by side", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel(/I am allowed to analyze this file/).check();
+  await page.getByLabel("Upload CSV file").setInputFiles(path.resolve("e2e/fixtures/two-sheets.xlsx"));
+  await expect(page.getByText("This workbook has 2 sheets")).toBeVisible();
+  await page.getByRole("button", { name: "Analyze all sheets" }).click();
+  const table = page.locator(".sheet-overview");
+  await expect(table.getByRole("heading", { name: "All sheets" })).toBeVisible();
+  await expect(table.getByRole("row")).toHaveCount(3);
+  await expect(table.getByRole("cell", { name: "Orders", exact: true })).toBeVisible();
+});

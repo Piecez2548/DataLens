@@ -1,4 +1,4 @@
-import type { Analysis } from "./types";
+import type { Analysis, FollowUps } from "./types";
 import { t, tReason } from "./i18n";
 import { downloadWorkbook } from "./xlsx";
 
@@ -70,10 +70,32 @@ export function downloadIssuesCsv(data: Analysis) {
   download(`${baseName(data)}-issues.csv`, "text/csv;charset=utf-8", [header, ...lines].join("\r\n"), "﻿");
 }
 
-export function downloadIssuesXlsx(data: Analysis) {
+function followUpRows(data: Analysis, followUps: FollowUps) {
+  return Object.entries(followUps)
+    .filter(([kind, item]) => (data.issue_samples.kinds[kind]?.total ?? 0) > 0 && (item.owner || item.due || item.note))
+    .map((entry): (string | number | null)[] => [
+      t(issueKindLabels[entry[0]] ?? entry[0]),
+      data.issue_samples.kinds[entry[0]].total,
+      entry[1].owner,
+      entry[1].due,
+      entry[1].note,
+    ]);
+}
+
+export function downloadIssuesXlsx(data: Analysis, followUps: FollowUps = {}) {
+  const plan = followUpRows(data, followUps);
   const label = t(data.issue_samples.row_label === "row" ? "Row" : "Record");
   const kinds = Object.entries(data.issue_samples.kinds).filter(([, entry]) => entry.total > 0);
   downloadWorkbook(`${baseName(data)}-issues.xlsx`, [
+    ...(plan.length
+      ? [
+          {
+            name: t("Follow-up plan"),
+            header: [t("Issue type"), t("Count"), t("Owner"), t("Due date"), t("Note")],
+            rows: plan,
+          },
+        ]
+      : []),
     {
       name: t("Summary"),
       header: [t("Issue type"), t("Total"), t("Listed")],
@@ -101,8 +123,9 @@ export function downloadIssuesXlsx(data: Analysis) {
   ]);
 }
 
-export function downloadIssuesJson(data: Analysis) {
+export function downloadIssuesJson(data: Analysis, followUps: FollowUps = {}) {
   const body = {
+    follow_ups: followUps,
     file: data.filename,
     source_sha256: data.provenance.sha256,
     row_label: data.issue_samples.row_label,

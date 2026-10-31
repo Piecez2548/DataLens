@@ -1198,3 +1198,38 @@ footer span:first-child {
   cursor: pointer;
 }
 .samples button:disabled { opacity: .6; cursor: not-allowed; }
+
+.follow-up {
+  display: grid;
+  grid-template-columns: 1fr 180px;
+  gap: 10px 14px;
+  margin: 14px 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.follow-up legend {
+  padding: 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.follow-up label {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+}
+.follow-up label.wide,
+.follow-up small {
+  grid-column: 1 / -1;
+}
+.follow-up input {
+  min-width: 0;
+}
+@media (max-width: 700px) {
+  .follow-up {
+    grid-template-columns: 1fr;
+  }
+}
+.sheet-overview {
+  margin-bottom: 16px;
+}
