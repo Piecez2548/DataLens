@@ -14,5 +14,5 @@ For suspected credential or signing-key exposure, rotate `DATALENS_AUDIT_SECRET`
 
 ## Monitoring
 
-GitHub Actions runs a scheduled public smoke check. It verifies the health endpoint, an analysis round trip with synthetic data, and browser security headers. It does not upload business data. Review Vercel function failures and duration in the dashboard; a 100,000-row file near the 4 MiB limit takes about 22 seconds, against a 60-second function limit.
+GitHub Actions runs a scheduled public smoke check. It verifies the health endpoint, an analysis round trip with synthetic data, and browser security headers. It does not upload business data. Review Vercel function failures and duration in the dashboard; a 100,000-row file near the 4 MiB limit takes about 16 seconds, against a 60-second function limit.
 

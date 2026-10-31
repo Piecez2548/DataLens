@@ -41,7 +41,7 @@ Use the **Try a sample** buttons on the home page for repeatable demonstrations.
 - Repeat at mobile width (about 375 px): no horizontal page scroll and controls at least 44 px tall.
 - Toggle dark and light themes.
 - Upload an invalid file and a file above 4 MiB; verify a clear error and that the prior dataset remains usable.
-- Performance reference: a 100,000-row, 8-column, 4 MB CSV completes in about 22 seconds on the hosted service (about 6 seconds locally).
+- Performance reference: a 100,000-row, 8-column, 4 MB CSV completes in about 16 seconds on the hosted service (about 6 seconds locally).
 - Choose Back to Nexus; verify the hub opens without transferring file contents.
 
 DataLens has no account system. File contents and analysis state are not transferred to Nexus.
