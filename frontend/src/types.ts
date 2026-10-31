@@ -7,6 +7,7 @@ export interface Column {
   invalid: number;
   outliers: number;
   inferred_type: string;
+  format: "currency" | "percent" | null;
   pattern: "thai_national_id" | "thai_phone" | null;
   type_overridden: boolean;
   stats: Record<string, number> | null;
@@ -44,6 +45,25 @@ export interface Analysis {
   };
   columns: Column[];
   preview: Record<string, string | null>[];
+  key_duplicates: {
+    columns: string[];
+    duplicate_rows: number;
+    blank_key_rows: number;
+  } | null;
+  group_summary: {
+    by: string;
+    measure: string | null;
+    total_groups: number;
+    truncated: boolean;
+    rows: {
+      group: string;
+      rows: number;
+      sum: number | null;
+      mean: number | null;
+      min: number | null;
+      max: number | null;
+    }[];
+  } | null;
   issue_samples: {
     row_label: "row" | "record";
     max_examples: number;
@@ -102,6 +122,10 @@ export interface Analysis {
     source_format: "csv" | "xlsx" | "json";
     sheet: string | null;
     sheets: string[] | null;
+    header_row: number | null;
+    header_row_suggestion: number | null;
+    date_order: "dmy" | "mdy";
+    date_order_ambiguous: boolean;
     encoding: string;
     delimiter: string | null;
     missing_markers: string[];

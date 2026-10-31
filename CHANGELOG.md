@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Numbers: thousands separators (`1,234.50`), currency (`฿100`, `$2,000`, `300 บาท`), percent (`15%`, kept at face value) and accounting negatives (`(500)`) are numeric, with statistics, outliers and min/max rules. Malformed look-alikes stay text.
+- Dates: day-first by default; month-first is used when the data proves it (a second part above 12). Files where every date could be read either way are flagged and the user can confirm the order.
+- Header row: choose which row holds the column names (report titles above the table); workbooks suggest it automatically.
+- Business key: pick up to 5 columns; rows that repeat the key (with all key cells filled) are reported as a high-priority finding even when other values differ.
+- Summary by group: rows, sum, average, min and max of a numeric measure per value of a column (top 50 groups), exportable to CSV.
+- Compare now shows issue resolution by type (resolved, new, unchanged) and the status change.
+- Performance: a 100,000-row, 10-column file (about 5 MB) analyzes in about 6 seconds locally.
+
 - Accept JSON (array of records, an object wrapping one array, or JSON Lines); nested objects are flattened to dotted columns and arrays kept as JSON text.
 - Choose any worksheet of an Excel workbook; the workbook's sheet list is recorded in provenance.
 - Locate problems: every missing, duplicate, type-conflict, invalid, outlier and business-rule finding lists its row (matching the original file numbering) or record, column, value and reason. Totals are exact; up to 1,000 examples per kind are returned.

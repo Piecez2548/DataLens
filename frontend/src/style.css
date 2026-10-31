@@ -1164,3 +1164,23 @@ footer span:first-child {
   color: var(--text);
   padding: 8px 10px;
 }
+
+.header-row-field { display: grid; gap: 6px; font-size: 12px; font-weight: 700; max-width: 220px; margin: 12px auto; text-align: left; }
+.header-row-field input, .group-controls select, .key-setup select {
+  min-height: 44px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  padding: 8px 10px;
+}
+.key-setup { border: 0; border-top: 1px solid var(--border); margin: 0; padding: 16px 22px; display: grid; gap: 10px; }
+.key-setup legend { font-weight: 700; font-size: 13px; padding: 0; }
+.key-setup p { font-size: 12px; margin: 0; }
+.key-options { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+.key-options label, .date-order { display: flex; align-items: center; gap: 8px; font-size: 13px; min-height: 32px; }
+.date-order { flex-wrap: wrap; }
+.group-controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin: 14px 0; }
+.group-controls label { display: grid; gap: 6px; font-size: 11px; font-weight: 700; }
+.group-controls button { min-height: 44px; }
+.bar { display: block; height: 10px; border-radius: 5px; background: #6866ea; min-width: 2px; max-width: 160px; }

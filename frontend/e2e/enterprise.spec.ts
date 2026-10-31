@@ -184,3 +184,30 @@ test("analyzes a JSON file of records", async ({ page }) => {
   await expect(page.getByText("2 rows · 2 columns")).toBeVisible();
   await expect(page.getByText("JSON records").first()).toBeVisible();
 });
+
+test("reads a report-style file, summarizes by group and flags repeated keys", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel(/I am allowed to analyze this file/).check();
+  await page.getByLabel(/Header row/).fill("3");
+  await page.getByLabel("Upload CSV file").setInputFiles({
+    name: "report.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from(
+      'Monthly report,\nprepared by finance,\npo,team,amount\nA1,North,"1,200.50"\nA2,South,฿300\nA1,North,50%\nA3,North,(100)\n',
+    ),
+  });
+  await expect(page.getByText("4 rows · 3 columns")).toBeVisible();
+
+  await page.getByText("Dataset setup", { exact: true }).click();
+  await page.locator(".key-options label").filter({ hasText: "po" }).getByRole("checkbox").check();
+  await page.getByRole("button", { name: "Apply dataset setup" }).click();
+  await expect(page.getByText(/1 rows repeat the business key \(po\)/)).toBeVisible();
+
+  const views = page.getByRole("navigation", { name: "Dataset views" });
+  await views.getByRole("button", { name: "Summary" }).click();
+  await page.getByLabel("Group by").selectOption("team");
+  await page.getByLabel("Measure").selectOption("amount");
+  await page.getByRole("button", { name: "Show summary" }).click();
+  await expect(page.getByRole("cell", { name: "North", exact: true })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "1,150.5" })).toBeVisible();
+});

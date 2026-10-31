@@ -1,4 +1,5 @@
 import type { Analysis } from "./types";
+import { issueKindLabels } from "./issueExport";
 
 const fmt = (n: number) =>
   n.toLocaleString(undefined, { maximumFractionDigits: 2 });
@@ -80,6 +81,51 @@ export default function Compare({
                 <td>{delta(before, after)}</td>
               </tr>
             ))}
+          </tbody>
+        </table>
+      </div>
+      <h3>Issue resolution</h3>
+      <p className="muted">
+        Status: {base.executive.status} → {other.executive.status}. Counts are
+        exact totals for each issue type, so a lower number after your fixes
+        means issues were resolved.
+      </p>
+      <div className="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Issue type</th>
+              <th>Baseline</th>
+              <th>Comparison</th>
+              <th>Result</th>
+            </tr>
+          </thead>
+          <tbody>
+            {Array.from(
+              new Set([
+                ...Object.keys(base.issue_samples.kinds),
+                ...Object.keys(other.issue_samples.kinds),
+              ]),
+            ).map((kind) => {
+              const before = base.issue_samples.kinds[kind]?.total ?? 0;
+              const after = other.issue_samples.kinds[kind]?.total ?? 0;
+              return (
+                <tr key={kind}>
+                  <td>{issueKindLabels[kind] ?? kind}</td>
+                  <td>{fmt(before)}</td>
+                  <td>{fmt(after)}</td>
+                  <td>
+                    {after < before
+                      ? `${fmt(before - after)} resolved`
+                      : after > before
+                        ? `${fmt(after - before)} new`
+                        : before === 0
+                          ? "none"
+                          : "unchanged"}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

@@ -150,6 +150,10 @@ def test_provenance_fingerprints_the_exact_input_without_generating_values():
         "source_format": "csv",
         "sheet": None,
         "sheets": None,
+        "header_row": 1,
+        "header_row_suggestion": None,
+        "date_order": "dmy",
+        "date_order_ambiguous": False,
         "encoding": "utf-8",
         "delimiter": "comma",
         "missing_markers": [],
@@ -520,6 +524,91 @@ def test_issue_samples_are_capped_but_totals_are_exact():
     entry = result["issue_samples"]["kinds"]["missing"]
     assert entry["total"] == 3000
     assert len(entry["examples"]) == 1000
+
+
+def test_money_percent_and_accounting_numbers_are_numeric():
+    content = '''item,price,share,delta
+a,"1,234.50",10%,(500)
+b,฿100,15.5%,-20
+c,"$2,000",20%,30
+d,300 บาท,25%,40
+'''.encode()
+    result = analyze(content, "money.csv", business_rules={"price": {"min": 0}})
+    price, share, delta = result["columns"][1:]
+    assert (price["type"], price["format"], price["mismatches"]) == ("numeric", "currency", 0)
+    assert price["stats"]["max"] == 2000.0 and price["stats"]["min"] == 100.0
+    assert (share["type"], share["format"]) == ("numeric", "percent")
+    assert delta["stats"]["min"] == -500.0
+    assert result["business_rules"]["passed"] is True
+
+
+def test_malformed_money_is_not_numeric():
+    result = analyze(b'v\n"1,2"\n"12,34,5"\n$$5\n--3\n', "bad.csv", "present")
+    assert result["columns"][0]["type"] == "categorical"
+
+
+def test_date_order_is_inferred_from_proof_and_flagged_when_ambiguous():
+    assert analyze(b"d\n31/12/2024\n01/02/2024\n", "a.csv", "present")["provenance"]["date_order"] == "dmy"
+    mdy = analyze(b"d\n12/31/2024\n01/02/2024\n", "b.csv", "present")
+    assert mdy["provenance"]["date_order"] == "mdy"
+    assert mdy["columns"][0]["invalid"] == 0
+    ambiguous = analyze(b"d\n05/06/2024\n01/02/2024\n", "c.csv", "present")
+    assert ambiguous["provenance"]["date_order_ambiguous"] is True
+    forced = analyze(b"d\n05/06/2024\n01/02/2024\n", "c.csv", "present", date_order="mdy")
+    assert forced["provenance"]["date_order"] == "mdy"
+    assert forced["provenance"]["date_order_ambiguous"] is False
+    assert forced["timeseries"]["first"] == "2024-01-02"
+    with pytest.raises(ValueError, match="date_order"):
+        analyze(b"d\n1\n", "c.csv", date_order="ymd")
+
+
+def test_header_row_skips_report_titles():
+    content = b"Sales report\n\nregion,total\nN,1\nS,2\n"
+    with pytest.raises(ValueError, match="set the header row"):
+        analyze(content, "report.csv")
+    result = analyze(content, "report.csv", header_row=3)
+    assert [c["name"] for c in result["columns"]] == ["region", "total"]
+    assert result["rows"] == 2
+    assert result["provenance"]["header_row"] == 3
+    # row numbers still refer to the original file
+    result = analyze(b"x\nt\nregion,total\nN,1\nS,\n".replace(b"x\nt\n", b"x,y\nt,u\n"), "r.csv", "present", header_row=3)
+    assert result["issue_samples"]["kinds"]["missing"]["examples"][0]["row"] == 5
+    with pytest.raises(ValueError, match="header row"):
+        analyze(content, "report.csv", header_row=99)
+
+
+def test_header_row_is_suggested_for_padded_workbooks():
+    book = _workbook([["Quarterly report"], [], ["region", "total", "owner"], ["N", 1, "A"], ["S", 2, "B"]])
+    result = analyze(book, "q.xlsx")
+    assert result["provenance"]["header_row_suggestion"] == 3
+    fixed = analyze(book, "q.xlsx", header_row=3)
+    assert [c["name"] for c in fixed["columns"]] == ["region", "total", "owner"]
+
+
+def test_business_key_duplicates_are_found_even_when_other_values_differ():
+    content = b"po,qty,note\nA1,5,x\nA2,6,y\nA1,9,z\n,1,blank\n,2,blank\nA1,1,w\n"
+    assert analyze(content, "k.csv", "present")["duplicates"] == 0
+    result = analyze(content, "k.csv", "present", business_key=["po"])
+    assert result["key_duplicates"] == {"columns": ["po"], "duplicate_rows": 2, "blank_key_rows": 2}
+    examples = result["issue_samples"]["kinds"]["key_duplicate"]["examples"]
+    assert [e["row"] for e in examples] == [4, 7]
+    assert examples[0]["reason"] == "Repeats a key first seen at row 2"
+    assert result["executive"]["status"] == "Action required"
+    with pytest.raises(ValueError, match="business key"):
+        analyze(content, "k.csv", "present", business_key=["nope"])
+
+
+def test_group_summary_ranks_groups_by_measure():
+    content = b"team,amount\nB,10\nA,5\nB,20\nA,\nC,1\n,7\n"
+    result = analyze(content, "g.csv", "present", group_by={"by": "team", "measure": "amount"})
+    summary = result["group_summary"]
+    assert [row["group"] for row in summary["rows"]] == ["B", "(blank)", "A", "C"]
+    assert summary["rows"][0] == {"group": "B", "rows": 2, "sum": 30.0, "mean": 15.0, "min": 10.0, "max": 20.0}
+    assert summary["total_groups"] == 4 and summary["truncated"] is False
+    counts = analyze(content, "g.csv", "present", group_by={"by": "team"})["group_summary"]
+    assert counts["rows"][0]["group"] == "B" and counts["rows"][0]["sum"] is None
+    with pytest.raises(ValueError, match="numeric"):
+        analyze(content, "g.csv", "present", group_by={"by": "amount", "measure": "team"})
 
 
 def test_corrupt_xlsx_is_rejected():

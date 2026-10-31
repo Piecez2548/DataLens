@@ -7,6 +7,7 @@ export const issueKindLabels: Record<string, string> = {
   invalid: "Invalid values",
   outlier: "Outliers",
   rule: "Business-rule violations",
+  key_duplicate: "Repeated business keys",
 };
 
 export type IssueRow = {

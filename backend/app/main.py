@@ -104,6 +104,10 @@ async def upload(
             schema_config.get("business_rules"),
             schema_config.get("missing_markers"),
             schema_config.get("sheet"),
+            schema_config.get("header_row"),
+            schema_config.get("date_order"),
+            schema_config.get("business_key"),
+            schema_config.get("group_by"),
         )
         analysis_id = hashlib.sha256(
             f"{result['provenance']['sha256']}:{json.dumps(schema_config, sort_keys=True)}:{app.version}".encode()

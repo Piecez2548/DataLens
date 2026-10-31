@@ -10,6 +10,7 @@ import re
 import unicodedata
 import zipfile
 from collections import Counter
+from functools import lru_cache
 
 import numpy as np
 import openpyxl
@@ -30,18 +31,62 @@ DATE_YMD = re.compile(r"(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})(?:[T ]\d{1,2}:\d{2}(
 DATE_DMY = re.compile(r"(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})(?:[T ]\d{1,2}:\d{2}(?::\d{2})?)?")
 
 
-def _date_parts(value: str) -> tuple[int, int, int] | None:
-    """Return (year, month, day) for a date-shaped value; day-first for D/M/YYYY. None when not date-shaped."""
+CURRENCY_PREFIX = re.compile(r"(?:฿|\$|€|£|¥|THB)\s*", re.IGNORECASE)
+CURRENCY_SUFFIX = re.compile(r"\s*(?:บาท|฿|THB)$", re.IGNORECASE)
+PLAIN_NUMBER = re.compile(
+    r"[+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d*)?(?:[eE][+-]?\d+)?|[+-]?\.\d+(?:[eE][+-]?\d+)?|[+-]?(?:inf(?:inity)?|nan)",
+    re.IGNORECASE,
+)
+
+
+@lru_cache(maxsize=200_000)
+def _parse_number(value: str) -> tuple[float | None, str | None]:
+    """Parse plain, thousands-separated, currency, percent and accounting-negative numbers.
+
+    Returns (number, format). Percent values keep their face value (15% -> 15.0)."""
+    text = value.strip()
+    if PLAIN_NUMBER.fullmatch(text):
+        return float(text.replace(",", "")), None
+    negative = False
+    if len(text) > 2 and text[0] == "(" and text[-1] == ")":
+        negative, text = True, text[1:-1].strip()
+    sign = ""
+    if text[:1] in ("+", "-"):
+        sign, text = text[0], text[1:].lstrip()
+    fmt = None
+    if match := CURRENCY_PREFIX.match(text):
+        text, fmt = text[match.end() :], "currency"
+    if match := CURRENCY_SUFFIX.search(text):
+        text, fmt = text[: match.start()], "currency"
+    if text.endswith("%"):
+        text, fmt = text[:-1].rstrip(), "percent"
+    if sign and text[:1] in ("+", "-"):
+        return None, None
+    if not PLAIN_NUMBER.fullmatch(text):
+        return None, None
+    number = float((sign + text).replace(",", ""))
+    if fmt and not np.isfinite(number):
+        return None, None
+    return (-number if negative else number), fmt
+
+
+def _numeric_series(series: pd.Series) -> pd.Series:
+    return series.map(lambda cell: _parse_number(cell)[0] if isinstance(cell, str) else None).astype(float)
+
+
+def _date_parts(value: str, order: str = "dmy") -> tuple[int, int, int] | None:
+    """Return (year, month, day) for a date-shaped value; D/M/YYYY unless order is "mdy". None when not date-shaped."""
     if match := DATE_YMD.fullmatch(value):
         return int(match[1]), int(match[2]), int(match[3])
     if match := DATE_DMY.fullmatch(value):
-        return int(match[3]), int(match[2]), int(match[1])
+        first, second = int(match[1]), int(match[2])
+        return (int(match[3]), second, first) if order == "dmy" else (int(match[3]), first, second)
     return None
 
 
-def _to_date(value: str) -> datetime.date | None:
+def _to_date(value: str, order: str = "dmy") -> datetime.date | None:
     """Calendar date for a date-shaped value; Buddhist Era years (2400+) are converted by subtracting 543."""
-    parts = _date_parts(value)
+    parts = _date_parts(value, order)
     if parts is None:
         return None
     year, month, day = parts
@@ -53,8 +98,8 @@ def _to_date(value: str) -> datetime.date | None:
         return None
 
 
-def _is_valid_date(value: str) -> bool:
-    return _to_date(value) is not None
+def _is_valid_date(value: str, order: str = "dmy") -> bool:
+    return _to_date(value, order) is not None
 
 
 THAI_ID_PATTERN = re.compile(r"\d{13}")
@@ -86,9 +131,9 @@ def _detect_personal_pattern(name: str, values: pd.Series) -> str | None:
     return None
 
 
-def _timeseries(column: str, values: pd.Series) -> dict | None:
+def _timeseries(column: str, values: pd.Series, order: str = "dmy") -> dict | None:
     """Row counts per day, month or year for one date column, with empty periods counted as gaps."""
-    parsed = [parsed_date for parsed_date in (_to_date(value) for value in values) if parsed_date]
+    parsed = [parsed_date for parsed_date in (_to_date(value, order) for value in values) if parsed_date]
     if not parsed:
         return None
     first, last = min(parsed), max(parsed)
@@ -269,11 +314,8 @@ def _detect_delimiter(text: str) -> str:
     return best
 
 
-def _detect_header(text: str, delimiter: str = ",") -> bool:
+def _detect_header(first: list[str], second: list[str]) -> bool:
     """Treat row one as a header only when its contents provide clear evidence."""
-    rows = csv.reader(io.StringIO(text), delimiter=delimiter)
-    first = next(rows, [])
-    second = next(rows, [])
     common_labels = {
         "id",
         "name",
@@ -329,6 +371,8 @@ def _executive_summary(
     embedded_delimiters: list[str],
     business_rule_violations: int,
     personal_data: list[str],
+    key_columns: list[str],
+    key_duplicates: int,
 ) -> dict:
     issues = []
     if not header_detected:
@@ -405,6 +449,15 @@ def _executive_summary(
                 "recommendation": "Resolve each violation or document an approved exception before executive use.",
             }
         )
+    if key_duplicates:
+        issues.append(
+            {
+                "severity": "high",
+                "title": f"{key_duplicates:,} rows repeat the business key ({', '.join(key_columns)})",
+                "detail": "The same key appears more than once, so counts and totals per key may be overstated.",
+                "recommendation": "Confirm which record is authoritative for each key and remove or merge the others.",
+            }
+        )
     if personal_data:
         issues.append(
             {
@@ -447,6 +500,10 @@ def analyze(
     business_rules: dict[str, dict] | None = None,
     missing_markers: list[str] | None = None,
     sheet: str | None = None,
+    header_row: int | None = None,
+    date_order: str | None = None,
+    business_key: list[str] | None = None,
+    group_by: dict | None = None,
 ) -> dict:
     if len(content) > MAX_BYTES:
         raise ValueError("CSV exceeds the 10 MB limit.")
@@ -478,19 +535,32 @@ def analyze(
     try:
         reader = csv.reader(io.StringIO(text), delimiter=delimiter, strict=True)
         all_rows = list(reader)
+        total_file_rows = len(all_rows)
+        header_row_suggestion = None
+        probe = [sum(1 for cell in row if cell.strip()) for row in all_rows[:30]]
+        if probe and max(probe) >= 2:
+            first_full = next(index for index, count in enumerate(probe) if count >= 0.8 * max(probe))
+            header_row_suggestion = first_full + 1 if first_full else None
+        skipped = 0
+        if header_row is not None:
+            if isinstance(header_row, bool) or not isinstance(header_row, int) or not 1 <= header_row <= min(total_file_rows, 1000):
+                raise ValueError("The header row must be a row number inside the file.")
+            skipped = header_row - 1
+            all_rows = all_rows[skipped:]
         if not all_rows:
             raise ValueError("The CSV is empty or malformed.")
         width = len(all_rows[0])
         if width > MAX_COLUMNS:
             raise ValueError("Maximum 100 columns supported.")
-        uneven = [(index + 1, len(row)) for index, row in enumerate(all_rows) if len(row) != width]
+        uneven = [(index + 1 + skipped, len(row)) for index, row in enumerate(all_rows) if len(row) != width]
         if uneven:
             examples = ", ".join(f"row {number} has {count}" for number, count in uneven[:5])
             more = f" (+{len(uneven) - 5} more)" if len(uneven) > 5 else ""
             raise ValueError(
                 f"Every row must have the same number of fields: expected {width}, but {examples}{more}."
+                " If the table starts lower in the file, set the header row."
             )
-        detected_header = _detect_header(text, delimiter)
+        detected_header = _detect_header(all_rows[0], all_rows[1] if len(all_rows) > 1 else [])
         use_header = detected_header if header_mode == "auto" else header_mode == "present"
         if use_header:
             headers = [h.strip() for h in all_rows[0]]
@@ -530,8 +600,20 @@ def analyze(
     invalid_override_types = set(type_overrides.values()) - ALLOWED_TYPES
     if unknown_overrides or invalid_override_types:
         raise ValueError("Schema overrides contain an unknown column or type.")
+    if date_order not in {None, "dmy", "mdy"}:
+        raise ValueError("date_order must be dmy or mdy.")
+    seen_slash_dates = day_first_proof = month_first_proof = 0
+    for header in headers:
+        pairs = normalized[header].dropna().str.extract(r"^(\d{1,2})[-/.](\d{1,2})[-/.]\d{4}(?:[T ].*)?$").dropna()
+        if len(pairs):
+            first_part, second_part = pairs[0].astype(int), pairs[1].astype(int)
+            seen_slash_dates += len(pairs)
+            day_first_proof += int((first_part > 12).sum())
+            month_first_proof += int((second_part > 12).sum())
+    date_order_ambiguous = date_order is None and seen_slash_dates > 0 and not day_first_proof and not month_first_proof
+    chosen_date_order = date_order or ("mdy" if month_first_proof and not day_first_proof else "dmy")
     columns, numeric, personal_data = [], {}, []
-    row_offset = 1 if source_format == "json" else (2 if use_header else 1)
+    row_offset = 1 if source_format == "json" else (2 if use_header else 1) + skipped
     samples: dict[str, dict] = {}
 
     def sample(kind: str, index, column: str | None, reason: str) -> None:
@@ -556,9 +638,9 @@ def analyze(
         def kind(value):
             if value.lower() in {"true", "false"}:
                 return "boolean"
-            if re.fullmatch(r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?|[+-]?(?:inf(?:inity)?|nan)", value, re.IGNORECASE):
+            if _parse_number(value)[0] is not None or PLAIN_NUMBER.fullmatch(value):
                 return "numeric"
-            if _date_parts(value) is not None:
+            if _date_parts(value, chosen_date_order) is not None:
                 return "datetime"
             return "categorical"
 
@@ -587,15 +669,21 @@ def analyze(
         bad = 0
         stats = None
         histogram = []
+        numeric_format = None
         sample("missing", normalized.index[normalized[name].isna()], name, "Blank or marked as missing")
         if mismatch:
             sample("mismatch", values.index[kinds != dtype], name, f"Does not look like {dtype}")
         if dtype == "numeric":
-            parsed = pd.to_numeric(matched, errors="coerce").astype(float)
+            parsed = _numeric_series(matched)
+            formats = Counter(_parse_number(value)[1] for value in matched)
+            numeric_format = next(
+                (name_ for name_ in ("percent", "currency") if matched.size and formats[name_] / matched.size >= 0.5),
+                None,
+            )
             good = parsed[np.isfinite(parsed)]
             bad = len(parsed) - len(good)
             sample("invalid", parsed.index[~np.isfinite(parsed)], name, "Not a finite number")
-            numeric[name] = pd.to_numeric(normalized[name], errors="coerce").replace([np.inf, -np.inf], np.nan)
+            numeric[name] = _numeric_series(normalized[name]).replace([np.inf, -np.inf], np.nan)
             if len(good):
                 stats = {
                     "count": len(good),
@@ -611,7 +699,7 @@ def analyze(
                     for i, count in enumerate(heights)
                 ]
         elif dtype == "datetime":
-            invalid_dates = ~matched.map(_is_valid_date)
+            invalid_dates = ~matched.map(lambda value: _is_valid_date(value, chosen_date_order))
             bad = int(invalid_dates.sum())
             sample("invalid", matched.index[invalid_dates], name, "Not a valid calendar date")
         elif dtype == "email":
@@ -637,6 +725,7 @@ def analyze(
                 "outliers": 0,
                 "inferred_type": inferred,
                 "pattern": pattern,
+                "format": numeric_format,
                 "type_overridden": name in type_overrides,
                 "stats": stats,
                 "histogram": histogram,
@@ -656,6 +745,73 @@ def analyze(
     duplicate_mask = normalized.duplicated()
     duplicates = int(duplicate_mask.sum())
     sample("duplicate", normalized.index[duplicate_mask], None, "Repeats an earlier row")
+    key_columns = business_key or []
+    if (
+        not isinstance(key_columns, list)
+        or len(key_columns) > 5
+        or not all(isinstance(item, str) and item in headers for item in key_columns)
+        or len(set(key_columns)) != len(key_columns)
+    ):
+        raise ValueError("The business key must list up to 5 existing, distinct columns.")
+    key_summary = None
+    if key_columns:
+        key_frame = normalized[key_columns]
+        complete = key_frame.notna().all(axis=1)
+        keyed = key_frame[complete]
+        repeated = keyed.duplicated(keep="first")
+        first_seen = {
+            values: position
+            for position, values in zip(keyed.index[~repeated], keyed[~repeated].itertuples(index=False, name=None))
+        }
+        entry = samples.setdefault("key_duplicate", {"total": 0, "examples": []})
+        entry["total"] += int(repeated.sum())
+        for position in list(keyed.index[repeated])[:MAX_SAMPLES]:
+            key_values = tuple(keyed.loc[position])
+            entry["examples"].append(
+                {
+                    "row": int(position) + row_offset,
+                    "column": ", ".join(key_columns),
+                    "value": " | ".join(key_values)[:80],
+                    "reason": f"Repeats a key first seen at row {first_seen[key_values] + row_offset}",
+                }
+            )
+        key_summary = {
+            "columns": key_columns,
+            "duplicate_rows": int(repeated.sum()),
+            "blank_key_rows": int((~complete).sum()),
+        }
+    group_summary = None
+    if group_by:
+        if not isinstance(group_by, dict) or set(group_by) - {"by", "measure"} or group_by.get("by") not in headers:
+            raise ValueError("The group summary needs an existing column to group by.")
+        measure = group_by.get("measure")
+        if measure is not None and measure not in numeric:
+            raise ValueError("The group summary measure must be a numeric column.")
+        grouped = pd.DataFrame(
+            {"group": normalized[group_by["by"]].fillna("(blank)"), "value": numeric[measure] if measure else np.nan}
+        ).groupby("group", sort=False)
+        figures = grouped["value"].agg(["count", "sum", "mean", "min", "max"])
+        sizes = grouped.size()
+        order_key = figures["sum"] if measure else sizes
+        ranked = order_key.sort_values(ascending=False, kind="stable").index
+        clean = lambda number: None if pd.isna(number) else float(number)
+        group_summary = {
+            "by": group_by["by"],
+            "measure": measure,
+            "total_groups": len(sizes),
+            "truncated": len(sizes) > 50,
+            "rows": [
+                {
+                    "group": str(label),
+                    "rows": int(sizes[label]),
+                    "sum": clean(figures.at[label, "sum"]) if measure else None,
+                    "mean": clean(figures.at[label, "mean"]) if measure else None,
+                    "min": clean(figures.at[label, "min"]) if measure else None,
+                    "max": clean(figures.at[label, "max"]) if measure else None,
+                }
+                for label in ranked[:50]
+            ],
+        }
     scores = {
         "Completeness": 100 * (1 - missing / (n * len(headers))),
         "Consistency": 100 * (1 - mismatches / present) if present else None,
@@ -712,7 +868,7 @@ def analyze(
                     "violations": int((~nonempty.isin(allowed_set)).sum()),
                 }
             )
-        numeric_values = pd.to_numeric(nonempty, errors="coerce").replace([np.inf, -np.inf], np.nan).dropna()
+        numeric_values = _numeric_series(nonempty).replace([np.inf, -np.inf], np.nan).dropna()
         if "min" in rule and "max" in rule:
             minimum, maximum = rule["min"], rule["max"]
             if (
@@ -760,6 +916,8 @@ def analyze(
         embedded_delimiters=embedded_delimiters,
         business_rule_violations=business_rule_violations,
         personal_data=personal_data,
+        key_columns=key_columns,
+        key_duplicates=key_summary["duplicate_rows"] if key_summary else 0,
     )
     numeric_names = list(numeric)
     scatter = []
@@ -786,6 +944,8 @@ def analyze(
         "executive": executive,
         "columns": columns,
         "preview": normalized.head(100).where(normalized.head(100).notna(), None).to_dict("records"),
+        "key_duplicates": key_summary,
+        "group_summary": group_summary,
         "issue_samples": {
             "row_label": "record" if source_format == "json" else "row",
             "max_examples": MAX_SAMPLES,
@@ -796,7 +956,7 @@ def analyze(
                 series
                 for column in columns
                 if column["type"] == "datetime"
-                and (series := _timeseries(column["name"], normalized[column["name"]].dropna()))
+                and (series := _timeseries(column["name"], normalized[column["name"]].dropna(), chosen_date_order))
             ),
             None,
         ),
@@ -813,7 +973,11 @@ def analyze(
             "source": "uploaded_file",
             "sha256": hashlib.sha256(content).hexdigest(),
             "input_bytes": len(content),
-            "file_rows": len(all_rows),
+            "file_rows": total_file_rows,
+            "header_row": skipped + 1 if use_header else None,
+            "header_row_suggestion": header_row_suggestion,
+            "date_order": chosen_date_order,
+            "date_order_ambiguous": date_order_ambiguous,
             "analyzed_rows": n,
             "preview_rows": min(n, 100),
             "method_version": "0.7.1",

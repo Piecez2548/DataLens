@@ -24,9 +24,21 @@ import { downloadExecutiveReport } from "./report";
 import ChartBoundary from "./ChartBoundary";
 import Compare from "./Compare";
 import IssueExplorer from "./IssueExplorer";
+import GroupSummary from "./GroupSummary";
 const Charts = lazy(() => import("./Charts"));
 const MAX_UPLOAD_MB = import.meta.env.PROD ? 4 : 10;
-const baseTabs = ["Overview", "Data quality", "Issues", "Explore", "Data preview"] as const;
+const baseTabs = ["Overview", "Data quality", "Issues", "Summary", "Explore", "Data preview"] as const;
+type SchemaOptions = {
+  column_names?: string[];
+  type_overrides?: Record<string, string>;
+  business_rules?: Record<string, BusinessRule>;
+  missing_markers?: string[];
+  sheet?: string;
+  header_row?: number | null;
+  date_order?: "dmy" | "mdy";
+  business_key?: string[];
+  group_by?: { by: string; measure?: string } | null;
+};
 type Tab = (typeof baseTabs)[number] | "Compare";
 const MARKER_PRESET = ["NA", "N/A", "null", "none", "nan", "-", "?"];
 const parseMarkers = (text: string) =>
@@ -84,6 +96,10 @@ export default function App() {
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [markerText, setMarkerText] = useState("");
   const [sheetName, setSheetName] = useState("");
+  const [headerRow, setHeaderRow] = useState("");
+  const [dateOrder, setDateOrder] = useState<"" | "dmy" | "mdy">("");
+  const [keyColumns, setKeyColumns] = useState<string[]>([]);
+  const [groupBy, setGroupBy] = useState({ by: "", measure: "" });
   const [other, setOther] = useState<Analysis | null>(null);
   const compareInput = useRef<HTMLInputElement>(null);
   const input = useRef<HTMLInputElement>(null);
@@ -99,13 +115,7 @@ export default function App() {
   async function requestAnalysis(
     file: File,
     headerMode: "auto" | "present" | "absent",
-    schema?: {
-      column_names?: string[];
-      type_overrides?: Record<string, string>;
-      business_rules?: Record<string, BusinessRule>;
-      missing_markers?: string[];
-      sheet?: string;
-    },
+    schema?: SchemaOptions,
   ): Promise<Analysis> {
     const body = new FormData();
     body.append("file", file);
@@ -117,6 +127,19 @@ export default function App() {
         business_rules: schema?.business_rules ?? businessRules,
         missing_markers: schema?.missing_markers ?? parseMarkers(markerText),
         sheet: schema?.sheet,
+        header_row:
+          schema?.header_row === null
+            ? undefined
+            : (schema?.header_row ?? (headerRow ? Number(headerRow) : undefined)),
+        date_order: schema?.date_order ?? (dateOrder || undefined),
+        business_key: schema?.business_key ?? (keyColumns.length ? keyColumns : undefined),
+        group_by:
+          schema?.group_by === null
+            ? undefined
+            : (schema?.group_by ??
+              (groupBy.by
+                ? { by: groupBy.by, measure: groupBy.measure || undefined }
+                : undefined)),
       }),
     );
     const response = await fetch(`/api/analyze?header_mode=${headerMode}`, {
@@ -165,13 +188,7 @@ export default function App() {
   async function upload(
     file: File,
     headerMode: "auto" | "present" | "absent" = "auto",
-    schema?: {
-      column_names?: string[];
-      type_overrides?: Record<string, string>;
-      business_rules?: Record<string, BusinessRule>;
-      missing_markers?: string[];
-      sheet?: string;
-    },
+    schema?: SchemaOptions,
   ) {
     if (busy) return;
     if (!authorized) {
@@ -185,10 +202,20 @@ export default function App() {
     setBusy(true);
     setError("");
     try {
-      const sheet = schema?.sheet ?? (file === lastFile ? sheetName || undefined : undefined);
-      const result = await requestAnalysis(file, headerMode, { ...schema, sheet });
+      const fresh = file !== lastFile;
+      const sheet = schema?.sheet ?? (fresh ? undefined : sheetName || undefined);
+      const result = await requestAnalysis(file, headerMode, {
+        ...schema,
+        sheet,
+        ...(fresh ? { business_key: [], group_by: null } : {}),
+      });
       setSheetName(result.provenance.sheet ?? "");
-      if (file !== lastFile) setBusinessRules({});
+      if (schema?.business_key) setKeyColumns(schema.business_key);
+      if (fresh || schema?.sheet || schema?.header_row) {
+        setKeyColumns(schema?.business_key ?? []);
+        setGroupBy({ by: "", measure: "" });
+      }
+      if (fresh) setBusinessRules({});
       setData(result);
       setAuditEvents([result.audit_event]);
       setLastFile(file);
@@ -203,7 +230,7 @@ export default function App() {
           result.columns[0].name,
       );
       setPage(0);
-      setTab("Overview");
+      if (fresh) setTab("Overview");
     } catch (e) {
       setError(
         e instanceof TypeError
@@ -254,6 +281,10 @@ export default function App() {
     setData(null);
     setOther(null);
     setSheetName("");
+    setHeaderRow("");
+    setDateOrder("");
+    setKeyColumns([]);
+    setGroupBy({ by: "", measure: "" });
     setMarkerText("");
     setLastFile(null);
     setColumnNames([]);
@@ -428,6 +459,18 @@ export default function App() {
                 />
                 I am allowed to analyze this file, and it contains no personal or sensitive data.
               </label>
+              <label className="header-row-field">
+                Header row (optional)
+                <input
+                  type="number"
+                  min={1}
+                  max={1000}
+                  value={headerRow}
+                  onChange={(event) => setHeaderRow(event.target.value)}
+                  placeholder="1"
+                />
+                <small>Use when column names start below a report title.</small>
+              </label>
               <button
                 className="primary"
                 disabled={busy || !authorized}
@@ -534,6 +577,66 @@ export default function App() {
                       </select>
                     </section>
                   )}
+                  {data.provenance.header_row_suggestion && !headerRow && (
+                    <section className="header-notice" role="status">
+                      <CircleAlert size={20} />
+                      <div>
+                        <strong>
+                          Row {data.provenance.header_row_suggestion} looks like the column names
+                        </strong>
+                        <p>
+                          Rows above it look like a title or notes, so they are being read as data.
+                        </p>
+                      </div>
+                      <button
+                        disabled={busy || !lastFile}
+                        onClick={() => {
+                          const row = data.provenance.header_row_suggestion;
+                          if (!lastFile || !row) return;
+                          setHeaderRow(String(row));
+                          setBusinessRules({});
+                          void upload(lastFile, "auto", {
+                            header_row: row,
+                            business_rules: {},
+                          });
+                        }}
+                      >
+                        Use row {data.provenance.header_row_suggestion} as headers
+                      </button>
+                    </section>
+                  )}
+                  {data.provenance.date_order_ambiguous && (
+                    <section className="header-notice" role="status">
+                      <CircleAlert size={20} />
+                      <div>
+                        <strong>Confirm how dates like 05/06/2024 are written</strong>
+                        <p>
+                          Every date could be read either way, so day/month was assumed.
+                        </p>
+                      </div>
+                      {(["dmy", "mdy"] as const).map((order) => (
+                        <button
+                          key={order}
+                          disabled={busy || !lastFile}
+                          onClick={() => {
+                            if (!lastFile) return;
+                            setDateOrder(order);
+                            void upload(lastFile, data.header.used ? "present" : "absent", {
+                              date_order: order,
+                              column_names: columnNames,
+                              type_overrides: Object.fromEntries(
+                                columnNames.flatMap((name, index) =>
+                                  columnTypes[index] === "auto" ? [] : [[name, columnTypes[index]]],
+                                ),
+                              ),
+                            });
+                          }}
+                        >
+                          {order === "dmy" ? "Day / month / year" : "Month / day / year"}
+                        </button>
+                      ))}
+                    </section>
+                  )}
                   {data.header.mode === "auto" && (
                     <section className="header-notice" role="status">
                       <CircleAlert size={20} />
@@ -566,6 +669,16 @@ export default function App() {
                       types={columnTypes}
                       markers={markerText}
                       onMarkers={setMarkerText}
+                      keyColumns={keyColumns}
+                      onKey={(name, checked) =>
+                        setKeyColumns((current) =>
+                          checked
+                            ? [...current, name].slice(0, 5)
+                            : current.filter((item) => item !== name),
+                        )
+                      }
+                      dateOrder={dateOrder || data.provenance.date_order}
+                      onDateOrder={setDateOrder}
                       busy={busy}
                       onName={(index, value) =>
                         setColumnNames(
@@ -596,6 +709,8 @@ export default function App() {
                             column_names: columnNames,
                             type_overrides: overrides,
                             missing_markers: parseMarkers(markerText),
+                            business_key: keyColumns,
+                            date_order: dateOrder || undefined,
                           },
                         );
                       }}
@@ -723,6 +838,27 @@ export default function App() {
                 </>
               )}
               {tab === "Issues" && <IssueExplorer data={data} />}
+              {tab === "Summary" && (
+                <GroupSummary
+                  data={data}
+                  by={groupBy.by}
+                  measure={groupBy.measure}
+                  busy={busy}
+                  onChange={(by, measure) => setGroupBy({ by, measure })}
+                  onApply={() => {
+                    if (!lastFile) return;
+                    void upload(lastFile, data.header.used ? "present" : "absent", {
+                      column_names: columnNames,
+                      type_overrides: Object.fromEntries(
+                        columnNames.flatMap((name, index) =>
+                          columnTypes[index] === "auto" ? [] : [[name, columnTypes[index]]],
+                        ),
+                      ),
+                      group_by: { by: groupBy.by, measure: groupBy.measure || undefined },
+                    });
+                  }}
+                />
+              )}
               {tab === "Compare" && other && (
                 <Compare base={data} other={other} onClose={() => { setOther(null); setTab("Overview"); }} />
               )}
@@ -758,6 +894,7 @@ export default function App() {
                               <td>{c.name}</td>
                               <td>
                                 <span className="badge">{c.type}</span>
+                                {c.format && <span className="badge">{c.format}</span>}
                                 {c.pattern && (
                                   <span className="badge">
                                     {c.pattern === "thai_national_id" ? "Thai ID (personal data)" : "Thai phone (personal data)"}
@@ -886,6 +1023,10 @@ function SchemaSetup({
   types,
   markers,
   onMarkers,
+  keyColumns,
+  onKey,
+  dateOrder,
+  onDateOrder,
   busy,
   onName,
   onType,
@@ -896,6 +1037,10 @@ function SchemaSetup({
   types: string[];
   markers: string;
   onMarkers: (value: string) => void;
+  keyColumns: string[];
+  onKey: (name: string, checked: boolean) => void;
+  dateOrder: "dmy" | "mdy";
+  onDateOrder: (value: "dmy" | "mdy") => void;
   busy: boolean;
   onName: (index: number, value: string) => void;
   onType: (index: number, value: string) => void;
@@ -944,6 +1089,36 @@ function SchemaSetup({
           </div>
         ))}
       </div>
+      <fieldset className="key-setup">
+        <legend>Business key (optional, up to 5 columns)</legend>
+        <p>
+          Columns that together identify one record, such as an order number.
+          Rows that repeat the key are reported even if other values differ.
+        </p>
+        <div className="key-options">
+          {data.columns.map((column) => (
+            <label key={column.name}>
+              <input
+                type="checkbox"
+                checked={keyColumns.includes(column.name)}
+                disabled={!keyColumns.includes(column.name) && keyColumns.length >= 5}
+                onChange={(event) => onKey(column.name, event.target.checked)}
+              />
+              {column.name}
+            </label>
+          ))}
+        </div>
+        <label className="date-order">
+          Dates written as 05/06/2024 mean
+          <select
+            value={dateOrder}
+            onChange={(event) => onDateOrder(event.target.value as "dmy" | "mdy")}
+          >
+            <option value="dmy">5 June 2024 (day / month / year)</option>
+            <option value="mdy">6 May 2024 (month / day / year)</option>
+          </select>
+        </label>
+      </fieldset>
       <div className="marker-setup">
         <label htmlFor="missing-markers">
           Treat these values as missing (comma-separated)
