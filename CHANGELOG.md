@@ -4,6 +4,7 @@
 
 - Accept real-world exports: UTF-8 (with or without BOM), UTF-16, and Thai Windows-874 files are decoded deterministically; comma, semicolon, tab, and pipe delimiters are detected instead of rejected.
 - Record the detected encoding and delimiter in the provenance record, on-screen strip, and executive brief.
+- Recognize and validate dates written YYYY-MM-DD, YYYY/MM/DD, DD/MM/YYYY (day first), with optional time, and Buddhist Era years (2400+, converted by subtracting 543).
 - Recognize non-ASCII (for example Thai) header rows.
 
 ## 0.8.0 — No sign-in (2026-10-30)

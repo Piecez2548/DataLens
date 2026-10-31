@@ -381,3 +381,14 @@ def test_numeric_rule_rejects_boolean_and_inverted_range():
 def test_blank_physical_record_is_not_silently_discarded():
     with pytest.raises(ValueError, match="same number of fields"):
         analyze(b"value\n1\n\n2\n", "blank-row.csv", "present")
+
+
+def test_day_first_slash_and_buddhist_era_dates_are_validated():
+    result = analyze(
+        b"date\n31/12/2024\n01/02/2567\n2024/03/15\n2024-05-06T10:30:00\n31/02/2024\n",
+        "dates.csv",
+    )
+    column = result["columns"][0]
+    assert column["type"] == "datetime"
+    assert column["mismatches"] == 0
+    assert column["invalid"] == 1

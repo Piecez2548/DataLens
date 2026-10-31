@@ -2,6 +2,7 @@
 
 import codecs
 import csv
+import datetime
 import hashlib
 import io
 import re
@@ -16,6 +17,34 @@ MAX_ROWS = 100_000
 MAX_COLUMNS = 100
 ALLOWED_TYPES = {"numeric", "categorical", "datetime", "boolean", "email", "identifier"}
 EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+
+
+DATE_YMD = re.compile(r"(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})(?:[T ]\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?")
+DATE_DMY = re.compile(r"(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})(?:[T ]\d{1,2}:\d{2}(?::\d{2})?)?")
+
+
+def _date_parts(value: str) -> tuple[int, int, int] | None:
+    """Return (year, month, day) for a date-shaped value; day-first for D/M/YYYY. None when not date-shaped."""
+    if match := DATE_YMD.fullmatch(value):
+        return int(match[1]), int(match[2]), int(match[3])
+    if match := DATE_DMY.fullmatch(value):
+        return int(match[3]), int(match[2]), int(match[1])
+    return None
+
+
+def _is_valid_date(value: str) -> bool:
+    """Validate the calendar date; Buddhist Era years (2400+) are converted by subtracting 543."""
+    parts = _date_parts(value)
+    if parts is None:
+        return False
+    year, month, day = parts
+    if year >= 2400:
+        year -= 543
+    try:
+        datetime.date(year, month, day)
+    except ValueError:
+        return False
+    return True
 
 
 DELIMITERS = {",": "comma", ";": "semicolon", "	": "tab", "|": "pipe"}
@@ -88,7 +117,7 @@ def _detect_header(text: str, delimiter: str = ",") -> bool:
     visibly_header_shaped = label_shaped and all(cell.strip() == cell.strip().lower() for cell in first)
     data_shaped_second_row = any(
         re.fullmatch(r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?", cell.strip())
-        or re.fullmatch(r"\d{4}-\d{2}-\d{2}", cell.strip())
+        or _date_parts(cell.strip()) is not None
         for cell in second
     )
     return bool(
@@ -285,7 +314,7 @@ def analyze(
                 return "boolean"
             if re.fullmatch(r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?|[+-]?(?:inf(?:inity)?|nan)", value, re.IGNORECASE):
                 return "numeric"
-            if re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+            if _date_parts(value) is not None:
                 return "datetime"
             return "categorical"
 
@@ -329,7 +358,7 @@ def analyze(
                     for i, count in enumerate(heights)
                 ]
         elif dtype == "datetime":
-            bad = int(pd.to_datetime(matched, format="%Y-%m-%d", errors="coerce").isna().sum())
+            bad = int((~matched.map(_is_valid_date)).sum())
         elif dtype == "email":
             bad = int((~matched.map(lambda value: bool(EMAIL_PATTERN.fullmatch(value)))).sum())
         if dtype in {"numeric", "datetime", "boolean", "email"}:
