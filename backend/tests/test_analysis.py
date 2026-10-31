@@ -657,3 +657,13 @@ def test_day_first_slash_and_buddhist_era_dates_are_validated():
     assert column["type"] == "datetime"
     assert column["mismatches"] == 0
     assert column["invalid"] == 1
+
+
+def test_executive_summary_is_provided_in_thai_without_changing_the_status():
+    result = analyze(b"a,b\n1,\n2,3\n", "th.csv", "present")
+    executive = result["executive"]
+    assert executive["status"] == "Action required" or executive["status"] == "Review needed"
+    thai = executive["thai"]
+    assert len(thai["issues"]) == len(executive["issues"])
+    assert "ช่อง" in thai["issues"][0]["title"]
+    assert thai["scope_note"] != executive["scope_note"]

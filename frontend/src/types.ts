@@ -42,6 +42,17 @@ export interface Analysis {
     }[];
     scope_note: string;
     signals: string[];
+    thai: {
+      message: string;
+      issues: {
+        severity: "high" | "medium" | "info";
+        title: string;
+        detail: string;
+        recommendation: string;
+      }[];
+      scope_note: string;
+      signals: string[];
+    };
   };
   columns: Column[];
   preview: Record<string, string | null>[];

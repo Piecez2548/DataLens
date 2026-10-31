@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 import type { Analysis } from "./types";
 import { issueKindLabels } from "./issueExport";
 
@@ -27,14 +28,14 @@ export default function Compare({
     return before && before.type !== c.type;
   });
   const metrics: [string, number, number][] = [
-    ["Rows", base.rows, other.rows],
-    ["Columns", base.column_count, other.column_count],
-    ["Missing cells", base.missing, other.missing],
-    ["Duplicate rows", base.duplicates, other.duplicates],
-    ["Overall score", base.scores.Overall ?? 0, other.scores.Overall ?? 0],
+    [t("Rows"), base.rows, other.rows],
+    [t("Columns"), base.column_count, other.column_count],
+    [t("Missing cells"), base.missing, other.missing],
+    [t("Duplicate rows"), base.duplicates, other.duplicates],
+    [t("Overall score"), base.scores.Overall ?? 0, other.scores.Overall ?? 0],
     ...(["Completeness", "Consistency", "Uniqueness", "Validity"] as const).map(
       (name): [string, number, number] => [
-        name,
+        t(name),
         base.scores[name] ?? 0,
         other.scores[name] ?? 0,
       ],
@@ -45,31 +46,25 @@ export default function Compare({
     <section className="panel" aria-labelledby="compare-title">
       <div className="section-title">
         <div>
-          <h2 id="compare-title">Compare files</h2>
-          <p>
-            Baseline <strong>{base.filename}</strong> vs{" "}
+          <h2 id="compare-title">{t("Compare files")}</h2>
+          <p>{t("Baseline")}<strong>{base.filename}</strong> vs{" "}
             <strong>{other.filename}</strong>. Both analyses stay in this
             browser session.
           </p>
         </div>
-        <button className="text-button" onClick={onClose}>
-          Close comparison
-        </button>
+        <button className="text-button" onClick={onClose}>{t("Close comparison")}</button>
       </div>
       {sameFile && (
-        <p role="status" className="muted">
-          Both files have the same SHA-256 fingerprint, so their contents are
-          identical.
-        </p>
+        <p role="status" className="muted">{t("Both files have the same SHA-256 fingerprint, so their contents are identical.")}</p>
       )}
       <div className="table-scroll">
         <table>
           <thead>
             <tr>
-              <th>Measure</th>
-              <th>Baseline</th>
-              <th>Comparison</th>
-              <th>Change</th>
+              <th>{t("Measure")}</th>
+              <th>{t("Baseline")}</th>
+              <th>{t("Comparison")}</th>
+              <th>{t("Change")}</th>
             </tr>
           </thead>
           <tbody>
@@ -84,7 +79,7 @@ export default function Compare({
           </tbody>
         </table>
       </div>
-      <h3>Issue resolution</h3>
+      <h3>{t("Issue resolution")}</h3>
       <p className="muted">
         Status: {base.executive.status} → {other.executive.status}. Counts are
         exact totals for each issue type, so a lower number after your fixes
@@ -94,10 +89,10 @@ export default function Compare({
         <table>
           <thead>
             <tr>
-              <th>Issue type</th>
-              <th>Baseline</th>
-              <th>Comparison</th>
-              <th>Result</th>
+              <th>{t("Issue type")}</th>
+              <th>{t("Baseline")}</th>
+              <th>{t("Comparison")}</th>
+              <th>{t("Result")}</th>
             </tr>
           </thead>
           <tbody>
@@ -111,17 +106,17 @@ export default function Compare({
               const after = other.issue_samples.kinds[kind]?.total ?? 0;
               return (
                 <tr key={kind}>
-                  <td>{issueKindLabels[kind] ?? kind}</td>
+                  <td>{t(issueKindLabels[kind] ?? kind)}</td>
                   <td>{fmt(before)}</td>
                   <td>{fmt(after)}</td>
                   <td>
                     {after < before
-                      ? `${fmt(before - after)} resolved`
+                      ? `${fmt(before - after)} ${t("resolved")}`
                       : after > before
-                        ? `${fmt(after - before)} new`
+                        ? `${fmt(after - before)} ${t("new")}`
                         : before === 0
-                          ? "none"
-                          : "unchanged"}
+                          ? t("none")
+                          : t("unchanged")}
                   </td>
                 </tr>
               );
@@ -129,9 +124,9 @@ export default function Compare({
           </tbody>
         </table>
       </div>
-      <h3>Schema changes</h3>
+      <h3>{t("Schema changes")}</h3>
       {added.length + removed.length + retyped.length === 0 ? (
-        <p className="muted">Same column names and types.</p>
+        <p className="muted">{t("Same column names and types.")}</p>
       ) : (
         <ul>
           {added.map((c) => (
@@ -152,15 +147,15 @@ export default function Compare({
           ))}
         </ul>
       )}
-      <h3>Per-column change</h3>
+      <h3>{t("Per-column change")}</h3>
       <div className="table-scroll">
         <table>
           <thead>
             <tr>
-              <th>Column</th>
-              <th>Missing</th>
-              <th>Invalid</th>
-              <th>Distinct</th>
+              <th>{t("Column")}</th>
+              <th>{t("Missing")}</th>
+              <th>{t("Invalid")}</th>
+              <th>{t("Distinct")}</th>
             </tr>
           </thead>
           <tbody>
@@ -180,10 +175,7 @@ export default function Compare({
           </tbody>
         </table>
       </div>
-      <p className="muted">
-        Differences describe the two uploaded files only. They do not show which
-        file is correct.
-      </p>
+      <p className="muted">{t("Differences describe the two uploaded files only. They do not show which file is correct.")}</p>
     </section>
   );
 }

@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 import { Download } from "lucide-react";
 import type { Analysis } from "./types";
 
@@ -57,39 +58,29 @@ export default function GroupSummary({
     <section className="panel group-summary">
       <div className="section-title">
         <div>
-          <h2>Summary by group</h2>
-          <p>
-            See how rows and a numeric measure divide across the values of one
-            column, for example by team, region or status.
-          </p>
+          <h2>{t("Summary by group")}</h2>
+          <p>{t("See how rows and a numeric measure divide across the values of one column, for example by team, region or status.")}</p>
         </div>
       </div>
       <div className="group-controls">
-        <label>
-          Group by
-          <select value={by} onChange={(e) => onChange(e.target.value, measure)}>
-            <option value="">Choose a column</option>
+        <label>{t("Group by")}<select value={by} onChange={(e) => onChange(e.target.value, measure)}>
+            <option value="">{t("Choose a column")}</option>
             {groupable.map((c) => (
               <option key={c.name}>{c.name}</option>
             ))}
           </select>
         </label>
-        <label>
-          Measure
-          <select value={measure} onChange={(e) => onChange(by, e.target.value)}>
-            <option value="">Count rows only</option>
+        <label>{t("Measure")}<select value={measure} onChange={(e) => onChange(by, e.target.value)}>
+            <option value="">{t("Count rows only")}</option>
             {numericColumns.map((c) => (
               <option key={c.name}>{c.name}</option>
             ))}
           </select>
         </label>
-        <button className="primary" disabled={busy || !by} onClick={onApply}>
-          Show summary
-        </button>
+        <button className="primary" disabled={busy || !by} onClick={onApply}>{t("Show summary")}</button>
         {summary && (
           <button className="report-button" onClick={exportCsv}>
-            <Download size={15} /> Export summary (CSV)
-          </button>
+            <Download size={15} />{t("Export summary (CSV)")}</button>
         )}
       </div>
       {summary && (
@@ -99,16 +90,16 @@ export default function GroupSummary({
               <thead>
                 <tr>
                   <th>{summary.by}</th>
-                  <th>Rows</th>
+                  <th>{t("Rows")}</th>
                   {summary.measure && (
                     <>
-                      <th>Sum of {summary.measure}</th>
-                      <th>Average</th>
-                      <th>Min</th>
-                      <th>Max</th>
+                      <th>{t("Sum of")} {summary.measure}</th>
+                      <th>{t("Average")}</th>
+                      <th>{t("Min")}</th>
+                      <th>{t("Max")}</th>
                     </>
                   )}
-                  <th aria-hidden="true">Share</th>
+                  <th aria-hidden="true">{t("Share")}</th>
                 </tr>
               </thead>
               <tbody>

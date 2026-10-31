@@ -374,121 +374,191 @@ def _executive_summary(
     key_columns: list[str],
     key_duplicates: int,
 ) -> dict:
+    """Build the executive summary in English and Thai; the English `status` stays canonical for workflow checks."""
     issues = []
+
+    def add(severity, title, detail, recommendation):
+        issues.append({"severity": severity, "title": title, "detail": detail, "recommendation": recommendation})
+
     if not header_detected:
-        issues.append(
-            {
-                "severity": "medium",
-                "title": "Column names are missing",
-                "detail": "The first row appears to contain data, so neutral column names were generated.",
-                "recommendation": "Rename columns before sharing or connecting this dataset to reporting tools.",
-            }
+        add(
+            "medium",
+            ("Column names are missing", "ไม่พบชื่อคอลัมน์"),
+            (
+                "The first row appears to contain data, so neutral column names were generated.",
+                "แถวแรกดูเหมือนเป็นข้อมูล จึงสร้างชื่อคอลัมน์กลางให้แทน",
+            ),
+            (
+                "Rename columns before sharing or connecting this dataset to reporting tools.",
+                "ตั้งชื่อคอลัมน์ก่อนส่งต่อหรือเชื่อมต่อกับเครื่องมือรายงาน",
+            ),
         )
     if missing:
         ratio = missing / max(1, rows * columns)
-        issues.append(
-            {
-                "severity": "high" if ratio >= 0.05 else "medium",
-                "title": f"{missing:,} missing cells need review",
-                "detail": "Blank values can change totals, averages, and segment counts.",
-                "recommendation": "Confirm whether blanks mean unknown, not applicable, or a data collection failure.",
-            }
+        add(
+            "high" if ratio >= 0.05 else "medium",
+            (f"{missing:,} missing cells need review", f"มี {missing:,} ช่องที่ว่างและต้องตรวจสอบ"),
+            (
+                "Blank values can change totals, averages, and segment counts.",
+                "ค่าว่างอาจทำให้ผลรวม ค่าเฉลี่ย และจำนวนในแต่ละกลุ่มคลาดเคลื่อน",
+            ),
+            (
+                "Confirm whether blanks mean unknown, not applicable, or a data collection failure.",
+                "ยืนยันว่าค่าว่างหมายถึงไม่ทราบ ไม่เกี่ยวข้อง หรือเก็บข้อมูลไม่สำเร็จ",
+            ),
         )
     if duplicates:
-        issues.append(
-            {
-                "severity": "high" if duplicates / rows >= 0.02 else "medium",
-                "title": f"{duplicates:,} duplicate rows may overstate results",
-                "detail": "Repeated records can inflate counts and monetary totals.",
-                "recommendation": "Confirm the business key, then remove only records proven to be duplicates.",
-            }
+        add(
+            "high" if duplicates / rows >= 0.02 else "medium",
+            (f"{duplicates:,} duplicate rows may overstate results", f"มี {duplicates:,} แถวซ้ำที่อาจทำให้ผลลัพธ์สูงเกินจริง"),
+            (
+                "Repeated records can inflate counts and monetary totals.",
+                "ระเบียนที่ซ้ำอาจทำให้จำนวนและยอดเงินสูงเกินจริง",
+            ),
+            (
+                "Confirm the business key, then remove only records proven to be duplicates.",
+                "ยืนยันคีย์ทางธุรกิจ แล้วลบเฉพาะระเบียนที่พิสูจน์แล้วว่าซ้ำ",
+            ),
         )
     if mismatches:
-        issues.append(
-            {
-                "severity": "medium",
-                "title": f"{mismatches:,} values conflict with their column type",
-                "detail": "Mixed types can break sorting, aggregation, and downstream imports.",
-                "recommendation": "Standardize the flagged values before analysis.",
-            }
+        add(
+            "medium",
+            (f"{mismatches:,} values conflict with their column type", f"มี {mismatches:,} ค่าที่ขัดกับชนิดของคอลัมน์"),
+            (
+                "Mixed types can break sorting, aggregation, and downstream imports.",
+                "ชนิดข้อมูลที่ปนกันอาจทำให้การเรียงลำดับ การรวมยอด และการนำเข้าระบบอื่นผิดพลาด",
+            ),
+            ("Standardize the flagged values before analysis.", "ปรับค่าที่ถูกทำเครื่องหมายให้เป็นรูปแบบเดียวกันก่อนวิเคราะห์"),
         )
     if invalid:
-        issues.append(
-            {
-                "severity": "high",
-                "title": f"{invalid:,} typed values are invalid",
-                "detail": "These values match the expected shape but fail a basic validity check.",
-                "recommendation": "Correct or exclude the invalid values with an auditable rule.",
-            }
+        add(
+            "high",
+            (f"{invalid:,} typed values are invalid", f"มี {invalid:,} ค่าที่ไม่ถูกต้องตามชนิดข้อมูล"),
+            (
+                "These values match the expected shape but fail a basic validity check.",
+                "ค่าเหล่านี้มีรูปแบบตามที่คาดไว้ แต่ไม่ผ่านการตรวจความถูกต้องพื้นฐาน",
+            ),
+            (
+                "Correct or exclude the invalid values with an auditable rule.",
+                "แก้ไขหรือตัดค่าที่ไม่ถูกต้องออกด้วยกฎที่ตรวจสอบย้อนหลังได้",
+            ),
         )
     if outliers:
-        issues.append(
-            {
-                "severity": "info",
-                "title": f"{outliers:,} statistical outliers deserve context",
-                "detail": "IQR flags unusual numeric values; unusual does not automatically mean incorrect.",
-                "recommendation": "Ask the data owner whether these represent valid edge cases, errors, or exceptional events.",
-            }
+        add(
+            "info",
+            (f"{outliers:,} statistical outliers deserve context", f"มี {outliers:,} ค่าผิดปกติทางสถิติที่ควรหาสาเหตุ"),
+            (
+                "IQR flags unusual numeric values; unusual does not automatically mean incorrect.",
+                "IQR ระบุค่าตัวเลขที่ผิดปกติ แต่ค่าผิดปกติไม่ได้แปลว่าผิดเสมอไป",
+            ),
+            (
+                "Ask the data owner whether these represent valid edge cases, errors, or exceptional events.",
+                "สอบถามเจ้าของข้อมูลว่าเป็นกรณีสุดโต่งที่ถูกต้อง ข้อผิดพลาด หรือเหตุการณ์พิเศษ",
+            ),
         )
     if embedded_delimiters:
         names = ", ".join(embedded_delimiters[:3])
-        issues.append(
-            {
-                "severity": "medium",
-                "title": "Possible fields embedded inside one CSV column",
-                "detail": f"Repeated pipe delimiters were found in: {names}.",
-                "recommendation": "Confirm whether each pipe-separated field needs its own CSV column before reporting.",
-            }
+        add(
+            "medium",
+            ("Possible fields embedded inside one CSV column", "อาจมีหลายฟิลด์ถูกรวมอยู่ในคอลัมน์เดียว"),
+            (f"Repeated pipe delimiters were found in: {names}.", f"พบตัวคั่น | ซ้ำหลายตัวใน: {names}"),
+            (
+                "Confirm whether each pipe-separated field needs its own CSV column before reporting.",
+                "ยืนยันว่าแต่ละฟิลด์ที่คั่นด้วย | ควรแยกเป็นคอลัมน์ของตัวเองก่อนจัดทำรายงาน",
+            ),
         )
     if business_rule_violations:
-        issues.append(
-            {
-                "severity": "high",
-                "title": f"{business_rule_violations:,} business-rule violations require action",
-                "detail": "Uploaded values fall outside rules explicitly configured for this analysis.",
-                "recommendation": "Resolve each violation or document an approved exception before executive use.",
-            }
+        add(
+            "high",
+            (
+                f"{business_rule_violations:,} business-rule violations require action",
+                f"มี {business_rule_violations:,} รายการที่ละเมิดกฎทางธุรกิจและต้องดำเนินการ",
+            ),
+            (
+                "Uploaded values fall outside rules explicitly configured for this analysis.",
+                "ค่าในไฟล์อยู่นอกกฎที่กำหนดไว้สำหรับการวิเคราะห์นี้",
+            ),
+            (
+                "Resolve each violation or document an approved exception before executive use.",
+                "แก้ไขแต่ละรายการ หรือบันทึกข้อยกเว้นที่ได้รับอนุมัติ ก่อนนำเสนอผู้บริหาร",
+            ),
         )
     if key_duplicates:
-        issues.append(
-            {
-                "severity": "high",
-                "title": f"{key_duplicates:,} rows repeat the business key ({', '.join(key_columns)})",
-                "detail": "The same key appears more than once, so counts and totals per key may be overstated.",
-                "recommendation": "Confirm which record is authoritative for each key and remove or merge the others.",
-            }
+        add(
+            "high",
+            (
+                f"{key_duplicates:,} rows repeat the business key ({', '.join(key_columns)})",
+                f"มี {key_duplicates:,} แถวที่คีย์ทางธุรกิจซ้ำ ({', '.join(key_columns)})",
+            ),
+            (
+                "The same key appears more than once, so counts and totals per key may be overstated.",
+                "คีย์เดียวกันปรากฏมากกว่าหนึ่งครั้ง จำนวนและยอดรวมต่อคีย์อาจสูงเกินจริง",
+            ),
+            (
+                "Confirm which record is authoritative for each key and remove or merge the others.",
+                "ยืนยันว่าระเบียนใดเป็นข้อมูลหลักของแต่ละคีย์ แล้วลบหรือรวมระเบียนที่เหลือ",
+            ),
         )
     if personal_data:
-        issues.append(
-            {
-                "severity": "high",
-                "title": "Possible personal data detected",
-                "detail": f"Thai national ID or phone number patterns were found in: {', '.join(personal_data[:3])}.",
-                "recommendation": "Remove or mask these columns, or confirm a lawful basis and approved handling before sharing.",
-            }
+        add(
+            "high",
+            ("Possible personal data detected", "ตรวจพบข้อมูลที่อาจเป็นข้อมูลส่วนบุคคล"),
+            (
+                f"Thai national ID or phone number patterns were found in: {', '.join(personal_data[:3])}.",
+                f"พบรูปแบบเลขบัตรประชาชนหรือเบอร์โทรศัพท์ไทยใน: {', '.join(personal_data[:3])}",
+            ),
+            (
+                "Remove or mask these columns, or confirm a lawful basis and approved handling before sharing.",
+                "ลบหรือปิดบังคอลัมน์เหล่านี้ หรือยืนยันฐานทางกฎหมายและวิธีจัดการที่ได้รับอนุมัติก่อนส่งต่อ",
+            ),
         )
     high = sum(item["severity"] == "high" for item in issues)
     if high:
-        status, message = "Action required", "Resolve high-impact data risks before executive reporting."
+        status = "Action required"
+        message = ("Resolve high-impact data risks before executive reporting.", "แก้ไขความเสี่ยงของข้อมูลที่มีผลสูงก่อนรายงานผู้บริหาร")
     elif issues:
-        status, message = "Review needed", "The dataset is usable for exploration after the listed checks."
+        status = "Review needed"
+        message = ("The dataset is usable for exploration after the listed checks.", "ใช้ข้อมูลสำรวจได้หลังตรวจสอบรายการที่แจ้ง")
     else:
-        status, message = "Ready for exploration", "No structural issues were found by the supported checks."
+        status = "Ready for exploration"
+        message = ("No structural issues were found by the supported checks.", "ไม่พบปัญหาเชิงโครงสร้างจากการตรวจที่รองรับ")
     severity_order = {"high": 0, "medium": 1, "info": 2}
     issues.sort(key=lambda issue: severity_order[issue["severity"]])
-    return {
-        "status": status,
-        "message": message,
-        "quality_score": round(scores["Overall"], 2),
-        "issue_count": len(issues),
-        "high_priority_count": high,
-        "issues": issues,
-        "signals": [
-            f"Observed Pearson coefficient in this file: {pair['left']} ↔ {pair['right']} ({pair['coefficient']:+.2f})."
-            for pair in correlations[:1]
-        ],
-        "scope_note": "Automated structural checks only; business accuracy still requires an accountable owner.",
-    }
+    scope = (
+        "Automated structural checks only; business accuracy still requires an accountable owner.",
+        "เป็นเพียงการตรวจเชิงโครงสร้างอัตโนมัติ ความถูกต้องทางธุรกิจยังต้องมีผู้รับผิดชอบยืนยัน",
+    )
+
+    def build(index: int) -> dict:
+        return {
+            "status": status,
+            "message": message[index],
+            "quality_score": round(scores["Overall"], 2),
+            "issue_count": len(issues),
+            "high_priority_count": high,
+            "issues": [
+                {
+                    "severity": issue["severity"],
+                    "title": issue["title"][index],
+                    "detail": issue["detail"][index],
+                    "recommendation": issue["recommendation"][index],
+                }
+                for issue in issues
+            ],
+            "signals": [
+                (
+                    f"Observed Pearson coefficient in this file: {pair['left']} ↔ {pair['right']} ({pair['coefficient']:+.2f})."
+                    if index == 0
+                    else f"ค่าสัมประสิทธิ์สหสัมพันธ์เพียร์สันที่พบในไฟล์นี้: {pair['left']} ↔ {pair['right']} ({pair['coefficient']:+.2f})"
+                )
+                for pair in correlations[:1]
+            ],
+            "scope_note": scope[index],
+        }
+
+    english, thai = build(0), build(1)
+    english["thai"] = thai
+    return english
 
 
 def analyze(

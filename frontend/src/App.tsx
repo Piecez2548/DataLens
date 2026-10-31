@@ -1,3 +1,4 @@
+import { getLanguage, setLanguage, t, type Lang } from "./i18n";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import {
   Aperture,
@@ -78,6 +79,24 @@ export default function App() {
   }, [busy]);
   const [error, setError] = useState("");
   const [dark, setDark] = useState(false);
+  const [lang, setLang] = useState<Lang>(() => {
+    try {
+      const saved = window.localStorage.getItem("datalens.lang");
+      return saved === "th" || saved === "en" ? saved : "en";
+    } catch {
+      return "en";
+    }
+  });
+  // Set before children render so every t() call in this pass uses the chosen language.
+  setLanguage(lang);
+  useEffect(() => {
+    document.documentElement.lang = lang;
+    try {
+      window.localStorage.setItem("datalens.lang", lang);
+    } catch {
+      /* the choice then lasts for this visit only */
+    }
+  }, [lang]);
   const [page, setPage] = useState(0);
   const [lastFile, setLastFile] = useState<File | null>(null);
   const [columnNames, setColumnNames] = useState<string[]>([]);
@@ -322,24 +341,14 @@ export default function App() {
           href="https://nexus-lemon-eight-32.vercel.app/projects"
           className="text-button"
           style={{ marginTop: 24, fontSize: 14 }}
-        >
-          ← Back to Nexus
-        </a>
-        <div className="workspace-label">WORKSPACE</div>
+        >{t("← Back to Nexus")}</a>
+        <div className="workspace-label">{t("WORKSPACE")}</div>
         <div className="nav-active">
-          <Database size={18} /> Dataset explorer
-        </div>
+          <Database size={18} />{t("Dataset explorer")}</div>
         <div className="side-note">
-          <span className="status-dot" /> Session workspace
-          <p>
-            Session-only analysis.
-            <br />
-            No dataset history is kept.
-          </p>
+          <span className="status-dot" />{t("Session workspace")}<p>{t("Session-only analysis.")}<br />{t("No dataset history is kept.")}</p>
         </div>
-        <div className="side-bottom">
-          A clearer view of your data.
-          <br />
+        <div className="side-bottom">{t("A clearer view of your data.")}<br />
           <span>Simple analysis · v0.8.0</span>
         </div>
       </aside>
@@ -353,10 +362,15 @@ export default function App() {
             <Aperture size={22} aria-hidden="true" />
             <span>DataLens</span>
           </a>
-          <div className="breadcrumb">
-            Workspace <span>/</span> Dataset explorer
-          </div>
+          <div className="breadcrumb">{t("Workspace")}<span>/</span>{t("Dataset explorer")}</div>
           <div className="header-actions">
+            <button
+              className="icon-button lang-toggle"
+              aria-label={lang === "th" ? "Switch to English" : "เปลี่ยนเป็นภาษาไทย"}
+              onClick={() => setLang(lang === "th" ? "en" : "th")}
+            >
+              {lang === "th" ? "EN" : "ไทย"}
+            </button>
             <button
               className="icon-button"
               aria-label={dark ? "Use light theme" : "Use dark theme"}
@@ -369,14 +383,9 @@ export default function App() {
         <div className="content">
           <div className="page-heading">
             <div>
-              <div className="eyebrow">DATASET EXPLORER</div>
-              <h1>
-                Good insights start
-                <br className="mobile-break" /> with good data.
-              </h1>
-              <p>
-                Understand your schema, spot gaps, and explore what matters.
-              </p>
+              <div className="eyebrow">{t("DATASET EXPLORER")}</div>
+              <h1>{t("Good insights start")}<br className="mobile-break" />{t("with good data.")}</h1>
+              <p>{t("Understand your schema, spot gaps, and explore what matters.")}</p>
             </div>
             <button
               ref={uploadTrigger}
@@ -385,7 +394,7 @@ export default function App() {
               onClick={() => input.current?.click()}
             >
               <Upload size={17} />
-              {busy ? "Analyzing…" : "Upload file"}
+              {busy ? t("Analyzing…") : t("Upload file")}
             </button>
           </div>
           <input
@@ -444,24 +453,16 @@ export default function App() {
               <div className="upload-icon">
                 <FileSpreadsheet size={34} />
               </div>
-              <h2>Your next discovery starts here</h2>
-              <p>Drop a CSV, Excel (.xlsx) or JSON file here to explore its quality and structure.</p>
-              <p>
-                Current release: use synthetic or confirmed non-personal data only.
-                CSV bytes are sent to the analysis service and may be handled transiently
-                by the hosting framework. DataLens does not intentionally persist the file.
-              </p>
+              <h2>{t("Your next discovery starts here")}</h2>
+              <p>{t("Drop a CSV, Excel (.xlsx) or JSON file here to explore its quality and structure.")}</p>
+              <p>{t("Current release: use synthetic or confirmed non-personal data only. CSV bytes are sent to the analysis service and may be handled transiently by the hosting framework. DataLens does not intentionally persist the file.")}</p>
               <label className="authorization upload-authorization">
                 <input
                   type="checkbox"
                   checked={authorized}
                   onChange={(event) => setAuthorized(event.target.checked)}
-                />
-                I am allowed to analyze this file, and it contains no personal or sensitive data.
-              </label>
-              <label className="header-row-field">
-                Header row (optional)
-                <input
+                />{t("I am allowed to analyze this file, and it contains no personal or sensitive data.")}</label>
+              <label className="header-row-field">{t("Header row (optional)")}<input
                   type="number"
                   min={1}
                   max={1000}
@@ -469,14 +470,14 @@ export default function App() {
                   onChange={(event) => setHeaderRow(event.target.value)}
                   placeholder="1"
                 />
-                <small>Use when column names start below a report title.</small>
+                <small>{t("Use when column names start below a report title.")}</small>
               </label>
               <button
                 className="primary"
                 disabled={busy || !authorized}
                 onClick={() => input.current?.click()}
               >
-                {busy ? "Analyzing…" : "Choose a CSV file"}
+                {busy ? t("Analyzing…") : t("Choose a CSV file")}
                 <ArrowUpRight size={17} />
               </button>
               <small>
@@ -498,28 +499,25 @@ export default function App() {
                 </div>
                 <div className="file-actions">
                   <button className="report-button" onClick={clearDataset}>
-                    <Trash2 size={15} /> Clear dataset
-                  </button>
+                    <Trash2 size={15} />{t("Clear dataset")}</button>
                   <button
                     className="report-button"
                     disabled={busy}
                     onClick={() => compareInput.current?.click()}
                   >
-                    <FileSpreadsheet size={15} /> Compare with another file
-                  </button>
+                    <FileSpreadsheet size={15} />{t("Compare with another file")}</button>
                   <button
                     className="report-button"
                     onClick={() => downloadExecutiveReport(data, auditEvents)}
                   >
-                    <Download size={15} /> {approved ? "Export approved brief" : "Export draft profile"}
+                    <Download size={15} /> {approved ? t("Export approved brief") : t("Export draft profile")}
                   </button>
                   <span className="analyzed">
-                    <Check size={14} /> Analysis complete
-                  </span>
+                    <Check size={14} />{t("Analysis complete")}</span>
                 </div>
               </div>
               <div className="provenance-strip" role="status">
-                <strong>Uploaded source file</strong>
+                <strong>{t("Uploaded source file")}</strong>
                 <span>
                   All displayed values and metrics derive from this file; no
                   data rows or values were invented.
@@ -537,14 +535,14 @@ export default function App() {
                 </small>
               </div>
               <nav className="tabs" aria-label="Dataset views">
-                {(other ? [...baseTabs, "Compare" as const] : [...baseTabs]).map((t) => (
+                {(other ? [...baseTabs, "Compare" as const] : [...baseTabs]).map((name) => (
                   <button
-                    key={t}
-                    aria-current={tab === t ? "page" : undefined}
-                    className={tab === t ? "active" : ""}
-                    onClick={() => setTab(t)}
+                    key={name}
+                    aria-current={tab === name ? "page" : undefined}
+                    className={tab === name ? "active" : ""}
+                    onClick={() => setTab(name)}
                   >
-                    {t}
+                    {t(name)}
                   </button>
                 ))}
               </nav>
@@ -556,7 +554,7 @@ export default function App() {
                       <FileSpreadsheet size={20} />
                       <div>
                         <strong>This workbook has {data.provenance.sheets.length} sheets</strong>
-                        <p>Each sheet is analyzed on its own. Choose the sheet to analyze.</p>
+                        <p>{t("Each sheet is analyzed on its own. Choose the sheet to analyze.")}</p>
                       </div>
                       <select
                         aria-label="Worksheet"
@@ -584,9 +582,7 @@ export default function App() {
                         <strong>
                           Row {data.provenance.header_row_suggestion} looks like the column names
                         </strong>
-                        <p>
-                          Rows above it look like a title or notes, so they are being read as data.
-                        </p>
+                        <p>{t("Rows above it look like a title or notes, so they are being read as data.")}</p>
                       </div>
                       <button
                         disabled={busy || !lastFile}
@@ -609,10 +605,8 @@ export default function App() {
                     <section className="header-notice" role="status">
                       <CircleAlert size={20} />
                       <div>
-                        <strong>Confirm how dates like 05/06/2024 are written</strong>
-                        <p>
-                          Every date could be read either way, so day/month was assumed.
-                        </p>
+                        <strong>{t("Confirm how dates like 05/06/2024 are written")}</strong>
+                        <p>{t("Every date could be read either way, so day/month was assumed.")}</p>
                       </div>
                       {(["dmy", "mdy"] as const).map((order) => (
                         <button
@@ -641,7 +635,7 @@ export default function App() {
                     <section className="header-notice" role="status">
                       <CircleAlert size={20} />
                       <div>
-                        <strong>Confirm how row 1 was read</strong>
+                        <strong>{t("Confirm how row 1 was read")}</strong>
                         <p>
                           {data.header.used
                             ? `We treated row 1 as column names: ${data.columns.slice(0, 3).map((item) => item.name).join(", ")}.`
@@ -651,9 +645,7 @@ export default function App() {
                       <button
                         disabled={busy || !lastFile}
                         onClick={() => lastFile && void upload(lastFile, data.header.used ? "present" : "absent")}
-                      >
-                        This is correct
-                      </button>
+                      >{t("This is correct")}</button>
                       <button
                         disabled={busy || !lastFile}
                         onClick={() => lastFile && void upload(lastFile, data.header.used ? "absent" : "present")}
@@ -718,21 +710,21 @@ export default function App() {
                   )}
                   <div className="metrics">
                     {[
-                      ["Total rows", fmt(data.rows), "Records in your dataset"],
+                      [t("Total rows"), fmt(data.rows), t("Records in your dataset")],
                       [
-                        "Columns",
+                        t("Columns"),
                         fmt(data.column_count),
-                        "Automatically inferred",
+                        t("Automatically inferred"),
                       ],
                       [
-                        "Missing cells",
+                        t("Missing cells"),
                         fmt(data.missing),
                         `${fmt((data.missing / (data.rows * data.column_count)) * 100)}% of all cells`,
                       ],
                       [
-                        "Duplicate rows",
+                        t("Duplicate rows"),
                         fmt(data.duplicates),
-                        "Beyond the first occurrence",
+                        t("Beyond the first occurrence"),
                       ],
                     ].map(([label, value, detail]) => (
                       <section className="panel metric" key={label}>
@@ -745,20 +737,17 @@ export default function App() {
                   <Quality data={data} />
                   <div className="section-title">
                     <div>
-                      <h2>A closer look</h2>
-                      <p>
-                        Explore distributions and relationships in your dataset.
-                      </p>
+                      <h2>{t("A closer look")}</h2>
+                      <p>{t("Explore distributions and relationships in your dataset.")}</p>
                     </div>
                     <button
                       className="text-button"
                       onClick={() => setTab("Explore")}
-                    >
-                      Explore columns <ArrowUpRight size={16} />
+                    >{t("Explore columns")}<ArrowUpRight size={16} />
                     </button>
                   </div>
                   {column && (
-                    <ChartBoundary><Suspense fallback={<p>Loading charts…</p>}>
+                    <ChartBoundary><Suspense fallback={<p>{t("Loading charts…")}</p>}>
                       <Charts data={data} column={column} />
                     </Suspense></ChartBoundary>
                   )}
@@ -866,11 +855,8 @@ export default function App() {
                 <>
                   <Quality data={data} />
                   <section className="panel">
-                    <h2>Column health</h2>
-                    <p className="muted">
-                      A type is inferred only when it has a clear majority.
-                      Empty cells are excluded from type checks.
-                    </p>
+                    <h2>{t("Column health")}</h2>
+                    <p className="muted">{t("A type is inferred only when it has a clear majority. Empty cells are excluded from type checks.")}</p>
                     <div className="table-scroll">
                       <table>
                         <thead>
@@ -884,7 +870,7 @@ export default function App() {
                               "Outliers",
                               "Distinct",
                             ].map((h) => (
-                              <th key={h}>{h}</th>
+                              <th key={h}>{t(h)}</th>
                             ))}
                           </tr>
                         </thead>
@@ -918,8 +904,8 @@ export default function App() {
                 <>
                   <div className="section-title">
                     <div>
-                      <h2>Explore a column</h2>
-                      <p>Charts adapt to the inferred data type.</p>
+                      <h2>{t("Explore a column")}</h2>
+                      <p>{t("Charts adapt to the inferred data type.")}</p>
                     </div>
                     <select
                       aria-label="Column to explore"
@@ -941,7 +927,7 @@ export default function App() {
                       ))}
                     </div>
                   )}
-                  <ChartBoundary><Suspense fallback={<p>Loading charts…</p>}>
+                  <ChartBoundary><Suspense fallback={<p>{t("Loading charts…")}</p>}>
                     <Charts data={data} column={column} />
                   </Suspense></ChartBoundary>
                 </>
@@ -950,7 +936,7 @@ export default function App() {
                 <section className="panel">
                   <div className="section-title">
                     <div>
-                      <h2>Data preview</h2>
+                      <h2>{t("Data preview")}</h2>
                       <p>
                         First {data.preview.length} of {fmt(data.rows)} rows ·
                         trimmed values · blanks shown as —
@@ -992,15 +978,11 @@ export default function App() {
                     <span>
                       Page {page + 1} of {Math.ceil(data.preview.length / 10)}
                     </span>
-                    <button disabled={!page} onClick={() => setPage(page - 1)}>
-                      Previous
-                    </button>
+                    <button disabled={!page} onClick={() => setPage(page - 1)}>{t("Previous")}</button>
                     <button
                       disabled={(page + 1) * 10 >= data.preview.length}
                       onClick={() => setPage(page + 1)}
-                    >
-                      Next
-                    </button>
+                    >{t("Next")}</button>
                   </div>
                 </section>
               )}
@@ -1010,7 +992,7 @@ export default function App() {
             <span>
               <BarChart3 size={14} /> DataLens
             </span>
-            <span>Transparent metrics. No AI. Just your data.</span>
+            <span>{t("Transparent metrics. No AI. Just your data.")}</span>
           </footer>
         </div>
       </main>
@@ -1054,10 +1036,8 @@ function SchemaSetup({
     <details className="panel schema-setup" open={data.header.generated_names}>
       <summary>
         <span>
-          <strong>Dataset setup</strong>
-          <small>
-            Name columns and confirm how each field should be treated.
-          </small>
+          <strong>{t("Dataset setup")}</strong>
+          <small>{t("Name columns and confirm how each field should be treated.")}</small>
         </span>
         <span>
           {data.header.configured_names ? "Configured" : "Review schema"}
@@ -1090,11 +1070,8 @@ function SchemaSetup({
         ))}
       </div>
       <fieldset className="key-setup">
-        <legend>Business key (optional, up to 5 columns)</legend>
-        <p>
-          Columns that together identify one record, such as an order number.
-          Rows that repeat the key are reported even if other values differ.
-        </p>
+        <legend>{t("Business key (optional, up to 5 columns)")}</legend>
+        <p>{t("Columns that together identify one record, such as an order number. Rows that repeat the key are reported even if other values differ.")}</p>
         <div className="key-options">
           {data.columns.map((column) => (
             <label key={column.name}>
@@ -1108,9 +1085,7 @@ function SchemaSetup({
             </label>
           ))}
         </div>
-        <label className="date-order">
-          Dates written as 05/06/2024 mean
-          <select
+        <label className="date-order">{t("Dates written as 05/06/2024 mean")}<select
             value={dateOrder}
             onChange={(event) => onDateOrder(event.target.value as "dmy" | "mdy")}
           >
@@ -1120,45 +1095,32 @@ function SchemaSetup({
         </label>
       </fieldset>
       <div className="marker-setup">
-        <label htmlFor="missing-markers">
-          Treat these values as missing (comma-separated)
-        </label>
+        <label htmlFor="missing-markers">{t("Treat these values as missing (comma-separated)")}</label>
         <input
           id="missing-markers"
           value={markers}
           onChange={(event) => onMarkers(event.target.value)}
           placeholder="For example, NA, N/A, null, -"
         />
-        <button type="button" onClick={() => onMarkers(MARKER_PRESET.join(", "))}>
-          Use common markers
-        </button>
-        <small>
-          Matching ignores case. Without markers only empty cells count as
-          missing.
-        </small>
+        <button type="button" onClick={() => onMarkers(MARKER_PRESET.join(", "))}>{t("Use common markers")}</button>
+        <small>{t("Matching ignores case. Without markers only empty cells count as missing.")}</small>
       </div>
       {invalid && (
-        <p role="alert" className="schema-error">
-          Every column needs a unique name.
-        </p>
+        <p role="alert" className="schema-error">{t("Every column needs a unique name.")}</p>
       )}
       <div className="schema-actions">
-        <p>
-          Applying this setup reanalyzes the original file in this browser
-          session.
-        </p>
+        <p>{t("Applying this setup reanalyzes the original file in this browser session.")}</p>
         <button
           className="primary"
           disabled={busy || invalid}
           onClick={onApply}
-        >
-          Apply dataset setup
-        </button>
+        >{t("Apply dataset setup")}</button>
       </div>
     </details>
   );
 }
 function ExecutiveBrief({ data }: { data: Analysis }) {
+  const executive = getLanguage() === "th" ? data.executive.thai : data.executive;
   const tone =
     data.executive.status === "Action required"
       ? "danger"
@@ -1172,27 +1134,27 @@ function ExecutiveBrief({ data }: { data: Analysis }) {
     >
       <div className="executive-heading">
         <div>
-          <span className="eyebrow">EXECUTIVE BRIEF</span>
-          <h2 id="executive-title">{data.executive.status}</h2>
-          <p>{data.executive.message}</p>
+          <span className="eyebrow">{t("EXECUTIVE BRIEF")}</span>
+          <h2 id="executive-title">{t(data.executive.status)}</h2>
+          <p>{executive.message}</p>
         </div>
         <div className="executive-count">
           <strong>{data.executive.issue_count}</strong>
-          <span>items to review</span>
+          <span>{t("items to review")}</span>
         </div>
       </div>
-      {data.executive.issues.length > 0 ? (
+      {executive.issues.length > 0 ? (
         <div className="issue-list">
-          {data.executive.issues.map((issue) => (
+          {executive.issues.map((issue) => (
             <article className="issue" key={issue.title}>
               <span className={`severity ${issue.severity}`}>
-                {issue.severity}
+                {t(issue.severity)}
               </span>
               <div>
                 <h3>{issue.title}</h3>
                 <p>{issue.detail}</p>
                 <small>
-                  <strong>Next:</strong> {issue.recommendation}
+                  <strong>{t("Next:")}</strong> {issue.recommendation}
                 </small>
               </div>
             </article>
@@ -1200,15 +1162,14 @@ function ExecutiveBrief({ data }: { data: Analysis }) {
         </div>
       ) : (
         <p className="no-issues">
-          <Check size={17} /> No supported structural issues detected.
-        </p>
+          <Check size={17} />{t("No supported structural issues detected.")}</p>
       )}
-      {data.executive.signals.map((signal) => (
+      {executive.signals.map((signal) => (
         <p className="signal" key={signal}>
           <BarChart3 size={15} /> {signal}
         </p>
       ))}
-      <p className="scope-note">{data.executive.scope_note}</p>
+      <p className="scope-note">{executive.scope_note}</p>
     </section>
   );
 }
@@ -1216,19 +1177,19 @@ function Quality({ data }: { data: Analysis }) {
   return (
     <section className="panel quality">
       <div className="quality-summary">
-        <span className="eyebrow">DATA QUALITY</span>
+        <span className="eyebrow">{t("DATA QUALITY")}</span>
         <div className="score">
           {fmt(data.scores.Overall ?? 0)}
           <span>/100</span>
         </div>
-        <h3>Overall score</h3>
-        <p>Equal-weight mean of available dimensions.</p>
+        <h3>{t("Overall score")}</h3>
+        <p>{t("Equal-weight mean of available dimensions.")}</p>
       </div>
       <div className="quality-dimensions">
         {Object.entries(explanations).map(([name, description]) => (
           <div key={name}>
             <div className="dimension-title">
-              <strong>{name}</strong>
+              <strong>{t(name)}</strong>
               <span>
                 {data.scores[name] === null
                   ? "N/A"
@@ -1238,7 +1199,7 @@ function Quality({ data }: { data: Analysis }) {
             <div className="track">
               <div style={{ width: `${data.scores[name] ?? 0}%` }} />
             </div>
-            <p>{description}</p>
+            <p>{t(description)}</p>
           </div>
         ))}
       </div>

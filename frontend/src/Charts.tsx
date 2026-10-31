@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 import {
   BarChart,
   Bar,
@@ -37,7 +38,7 @@ export default function Charts({
       <section className="panel">
         <div className="section-title">
           <div>
-            <h3>{histogram ? "Value distribution" : "Most frequent values"}</h3>
+            <h3>{t(histogram ? "Value distribution" : "Most frequent values")}</h3>
             <p>
               {column.name} · {histogram ? "Histogram" : "Top 10 categories"}
             </p>
@@ -66,9 +67,9 @@ export default function Charts({
           </ResponsiveContainer>
         </div>
         <details className="chart-data">
-          <summary>View chart values as a table</summary>
+          <summary>{t("View chart values as a table")}</summary>
           <table>
-            <thead><tr><th>Value or range</th><th>Count</th></tr></thead>
+            <thead><tr><th>{t("Value or range")}</th><th>{t("Count")}</th></tr></thead>
             <tbody>{values.map((item) => <tr key={item.label}><td>{item.label}</td><td>{item.count}</td></tr>)}</tbody>
           </table>
         </details>
@@ -76,8 +77,8 @@ export default function Charts({
       <section className="panel">
         <div className="section-title">
           <div>
-            <h3>Column composition</h3>
-            <p>Inferred schema across the dataset</p>
+            <h3>{t("Column composition")}</h3>
+            <p>{t("Inferred schema across the dataset")}</p>
           </div>
         </div>
         <div className="chart" aria-hidden="true">
@@ -101,9 +102,9 @@ export default function Charts({
           </ResponsiveContainer>
         </div>
         <details className="chart-data">
-          <summary>View column types as a table</summary>
+          <summary>{t("View column types as a table")}</summary>
           <table>
-            <thead><tr><th>Detected type</th><th>Columns</th></tr></thead>
+            <thead><tr><th>{t("Detected type")}</th><th>{t("Columns")}</th></tr></thead>
             <tbody>{types.map((item) => <tr key={item.name}><td>{item.name}</td><td>{item.value}</td></tr>)}</tbody>
           </table>
         </details>
@@ -112,7 +113,7 @@ export default function Charts({
         <section className="panel wide">
           <div className="section-title">
             <div>
-              <h3>Records over time</h3>
+              <h3>{t("Records over time")}</h3>
               <p>
                 {data.timeseries.column} · by {data.timeseries.granularity} ·{" "}
                 {data.timeseries.first} to {data.timeseries.last} ·{" "}
@@ -140,9 +141,9 @@ export default function Charts({
             </ResponsiveContainer>
           </div>
           <details className="chart-data">
-            <summary>View records over time as a table</summary>
+            <summary>{t("View records over time as a table")}</summary>
             <table>
-              <thead><tr><th>Period</th><th>Records</th></tr></thead>
+              <thead><tr><th>{t("Period")}</th><th>{t("Records")}</th></tr></thead>
               <tbody>
                 {data.timeseries.points.slice(0, 200).map((item) => (
                   <tr key={item.label}><td>{item.label}</td><td>{item.count}</td></tr>
@@ -156,7 +157,7 @@ export default function Charts({
       <section className="panel wide">
         <div className="section-title">
           <div>
-            <h3>Numeric relationship</h3>
+            <h3>{t("Numeric relationship")}</h3>
             <p>
               {data.scatter_axes.length === 2
                 ? `${data.scatter_axes.join(" × ")} · first 500 complete pairs`
@@ -191,11 +192,11 @@ export default function Charts({
             </ResponsiveContainer>
           </div>
         ) : (
-          <div className="chart-empty">No numeric pairs available</div>
+          <div className="chart-empty">{t("No numeric pairs available")}</div>
         )}
         {data.scatter.length > 0 && (
           <details className="chart-data">
-            <summary>View plotted pairs as a table</summary>
+            <summary>{t("View plotted pairs as a table")}</summary>
             <table>
               <thead><tr><th>{data.scatter_axes[0]}</th><th>{data.scatter_axes[1]}</th></tr></thead>
               <tbody>{data.scatter.slice(0, 100).map((item, index) => <tr key={index}><td>{item.x}</td><td>{item.y}</td></tr>)}</tbody>

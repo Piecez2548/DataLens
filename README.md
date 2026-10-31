@@ -17,7 +17,7 @@ The platform supports account-free analysis, structural quality metrics, busines
 - CSV preview (UTF-8, UTF-16, Thai Windows-874; comma, semicolon, tab or pipe delimiters detected and recorded), schema inference, governed names and type overrides.
 - Missing cells, duplicates, numeric statistics, IQR outliers, Pearson correlations, and adaptive charts.
 - Transparent Completeness, Consistency, Uniqueness, Validity, and Overall scores.
-- JSON, Excel .xlsx (any sheet) and CSV input; located issue lists exportable as CSV/JSON; user-defined missing markers, Thai national ID/phone personal-data flags, records-over-time chart, two-file comparison, and browser-local rule templates.
+- Thai/English interface and executive brief; JSON, Excel .xlsx (any sheet) and CSV input; located issue lists exportable as CSV/JSON; user-defined missing markers, Thai national ID/phone personal-data flags, records-over-time chart, two-file comparison, and browser-local rule templates.
 - Per-column required, allowed-value, minimum, and maximum business rules.
 - Executive readiness summary and a print-ready HTML brief.
 - SHA-256 source fingerprint, deterministic method version, and no-generated-values declaration.

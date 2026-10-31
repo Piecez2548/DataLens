@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 import { useState } from "react";
 import type { Analysis, AuditEvent, BusinessRule } from "./types";
 import { loadTemplates, saveTemplates } from "./ruleTemplates";
@@ -33,15 +34,14 @@ export function UploadPolicy({
     <details className="panel upload-policy">
       <summary className="advanced-summary">
         <span>
-          <strong>Prepare an executive report</strong>
-          <small>Add the owner and source when this analysis will be shared.</small>
+          <strong>{t("Prepare an executive report")}</strong>
+          <small>{t("Add the owner and source when this analysis will be shared.")}</small>
         </span>
         <span className="badge">{saved ? "Details added" : "Optional"}</span>
       </summary>
       <div className="advanced-body">
         <div className="governance-fields">
-          <label>
-            Data owner <span className="required-mark">Required to save</span>
+          <label>{t("Data owner")}<span className="required-mark">{t("Required to save")}</span>
             <input
               value={value.owner}
               maxLength={120}
@@ -51,9 +51,7 @@ export function UploadPolicy({
               placeholder="For example, Sales Operations"
             />
           </label>
-          <label>
-            Data classification
-            <select
+          <label>{t("Data classification")}<select
               value={value.classification}
               onChange={(event) =>
                 onChange({
@@ -63,14 +61,13 @@ export function UploadPolicy({
                 })
               }
             >
-              <option value="">Choose a classification</option>
-              <option value="public">Public</option>
-              <option value="internal">Internal</option>
-              <option value="confidential">Confidential</option>
+              <option value="">{t("Choose a classification")}</option>
+              <option value="public">{t("Public")}</option>
+              <option value="internal">{t("Internal")}</option>
+              <option value="confidential">{t("Confidential")}</option>
             </select>
           </label>
-          <label>
-            Official source <span className="optional-mark">Optional</span>
+          <label>{t("Official source")}<span className="optional-mark">{t("Optional")}</span>
             <input
               type="url"
               value={value.source_url}
@@ -80,8 +77,7 @@ export function UploadPolicy({
               placeholder="https://source.example"
             />
           </label>
-          <label>
-            Source checked on <span className="optional-mark">Optional</span>
+          <label>{t("Source checked on")}<span className="optional-mark">{t("Optional")}</span>
             <input
               type="date"
               value={value.verified_at}
@@ -90,8 +86,7 @@ export function UploadPolicy({
               }
             />
           </label>
-          <label className="wide">
-            Report purpose <span className="required-mark">Required to save</span>
+          <label className="wide">{t("Report purpose")}<span className="required-mark">{t("Required to save")}</span>
             <input
               value={value.purpose}
               maxLength={200}
@@ -107,14 +102,9 @@ export function UploadPolicy({
             type="checkbox"
             checked={authorized}
             onChange={(event) => onAuthorized(event.target.checked)}
-          />
-          I am allowed to use this non-personal file for the stated purpose.
-        </label>
+          />{t("I am allowed to use this non-personal file for the stated purpose.")}</label>
         <div className="advanced-actions">
-          <p>
-            These details are included in the report. DataLens does not retain
-            the CSV on its server.
-          </p>
+          <p>{t("These details are included in the report. DataLens does not retain the CSV on its server.")}</p>
           <button className="primary" disabled={busy || !ready} onClick={onSave}>
             {busy ? "Saving…" : saved ? "Update report details" : "Add report details"}
           </button>
@@ -149,28 +139,25 @@ export function GovernancePanel({
     <details className="panel governance-panel">
       <summary className="advanced-summary">
         <span>
-          <strong>Advanced checks and approval</strong>
-          <small>Set business rules or record a formal review.</small>
+          <strong>{t("Advanced checks and approval")}</strong>
+          <small>{t("Set business rules or record a formal review.")}</small>
         </span>
-        <span className="badge">Optional</span>
+        <span className="badge">{t("Optional")}</span>
       </summary>
       <div className="advanced-body">
         <div className="governance-summary">
           <div>
-            <span>Analysis ID</span>
+            <span>{t("Analysis ID")}</span>
             <strong>{data.governance.analysis_id.slice(0, 12)}…</strong>
           </div>
           <div>
-            <span>File retention</span>
-            <strong>Not stored</strong>
+            <span>{t("File retention")}</span>
+            <strong>{t("Not stored")}</strong>
           </div>
         </div>
         <details className="rule-editor">
-          <summary>Set business rules</summary>
-          <p>
-            Use these only when your organization has an agreed definition of
-            valid values.
-          </p>
+          <summary>{t("Set business rules")}</summary>
+          <p>{t("Use these only when your organization has an agreed definition of valid values.")}</p>
           <RuleTemplatePicker
             rules={rules}
             columns={data.columns.map((column) => column.name)}
@@ -192,14 +179,10 @@ export function GovernancePanel({
                           required: event.target.checked,
                         })
                       }
-                    />
-                    Cannot be blank
-                  </label>
+                    />{t("Cannot be blank")}</label>
                   {column.type === "numeric" && (
                     <>
-                      <label>
-                        Minimum
-                        <input
+                      <label>{t("Minimum")}<input
                           type="number"
                           value={rule.min ?? ""}
                           onChange={(event) =>
@@ -213,9 +196,7 @@ export function GovernancePanel({
                           }
                         />
                       </label>
-                      <label>
-                        Maximum
-                        <input
+                      <label>{t("Maximum")}<input
                           type="number"
                           value={rule.max ?? ""}
                           onChange={(event) =>
@@ -231,9 +212,7 @@ export function GovernancePanel({
                       </label>
                     </>
                   )}
-                  <label className="wide">
-                    Allowed values
-                    <input
+                  <label className="wide">{t("Allowed values")}<input
                       value={rule.allowed_values?.join(", ") ?? ""}
                       onChange={(event) =>
                         onRule(column.name, {
@@ -329,29 +308,23 @@ function RuleTemplatePicker({
   }
   return (
     <div className="rule-templates">
-      <label>
-        Saved rule templates
-        <select value={chosen} onChange={(event) => setChosen(event.target.value)}>
+      <label>{t("Saved rule templates")}<select value={chosen} onChange={(event) => setChosen(event.target.value)}>
           <option value="">{names.length ? "Choose a template" : "No templates yet"}</option>
           {names.map((item) => (
             <option key={item}>{item}</option>
           ))}
         </select>
       </label>
-      <button type="button" disabled={!chosen} onClick={load}>Load template</button>
-      <button type="button" disabled={!chosen} onClick={remove}>Delete template</button>
-      <label>
-        Template name
-        <input
+      <button type="button" disabled={!chosen} onClick={load}>{t("Load template")}</button>
+      <button type="button" disabled={!chosen} onClick={remove}>{t("Delete template")}</button>
+      <label>{t("Template name")}<input
           value={name}
           maxLength={60}
           onChange={(event) => setName(event.target.value)}
           placeholder="For example, Monthly sales"
         />
       </label>
-      <button type="button" disabled={!name.trim() || !hasRules} onClick={save}>
-        Save current rules
-      </button>
+      <button type="button" disabled={!name.trim() || !hasRules} onClick={save}>{t("Save current rules")}</button>
       {message && <p role="status">{message}</p>}
     </div>
   );
@@ -370,38 +343,26 @@ function AuditControls({
   return (
     <div className="audit-controls">
       <div>
-        <strong>Review record</strong>
+        <strong>{t("Review record")}</strong>
         <p>
           {events.length} event(s) · latest: {latest?.action ?? "none"}
         </p>
         {!canApprove && (
-          <p role="status">
-            Final approval needs a confirmed header, saved owner and purpose,
-            passing business rules, and a completed review.
-          </p>
+          <p role="status">{t("Final approval needs a confirmed header, saved owner and purpose, passing business rules, and a completed review.")}</p>
         )}
-        <p className="audit-disclaimer">
-          Internal workflow approval is included in the exported brief only.
-          DataLens does not retain this record, and no one signs in, so it does
-          not identify who approved. It is not an audit opinion, legal approval,
-          certification, or assurance of source-data accuracy.
-        </p>
+        <p className="audit-disclaimer">{t("Internal workflow approval is included in the exported brief only. DataLens does not retain this record, and no one signs in, so it does not identify who approved. It is not an audit opinion, legal approval, certification, or assurance of source-data accuracy.")}</p>
       </div>
       <button
         onClick={() =>
           onAudit("review", "Evidence and configured rules reviewed.")
         }
-      >
-        Mark as reviewed
-      </button>
+      >{t("Mark as reviewed")}</button>
       <button
         className="primary"
         disabled={!canApprove}
         title={canApprove ? "" : "A passing rule check and a completed review are required"}
         onClick={() => onAudit("approve", "Internal workflow approval recorded.")}
-      >
-        Record internal approval
-      </button>
+      >{t("Record internal approval")}</button>
     </div>
   );
 }

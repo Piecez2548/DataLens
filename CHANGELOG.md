@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Thai interface: a language switch (EN / ไทย, remembered in the browser) translates the workspace, tabs, issue locations, summary, comparison and governance panels, plus issue reasons and the exported executive brief. The server returns the executive summary in both languages (`executive.thai`); the canonical English `status` still drives approval.
+
 - Numbers: thousands separators (`1,234.50`), currency (`฿100`, `$2,000`, `300 บาท`), percent (`15%`, kept at face value) and accounting negatives (`(500)`) are numeric, with statistics, outliers and min/max rules. Malformed look-alikes stay text.
 - Dates: day-first by default; month-first is used when the data proves it (a second part above 12). Files where every date could be read either way are flagged and the user can confirm the order.
 - Header row: choose which row holds the column names (report titles above the table); workbooks suggest it automatically.

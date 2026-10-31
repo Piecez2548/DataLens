@@ -211,3 +211,21 @@ test("reads a report-style file, summarizes by group and flags repeated keys", a
   await expect(page.getByRole("cell", { name: "North", exact: true })).toBeVisible();
   await expect(page.getByRole("cell", { name: "1,150.5" })).toBeVisible();
 });
+
+test("switches the interface and executive brief to Thai", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "เปลี่ยนเป็นภาษาไทย" }).click();
+  await expect(page.getByRole("heading", { name: "การค้นพบครั้งต่อไปเริ่มที่นี่" })).toBeVisible();
+  await page.getByLabel(/ฉันได้รับอนุญาตให้วิเคราะห์ไฟล์นี้/).check();
+  await page.getByLabel("Upload CSV file").setInputFiles({
+    name: "gaps.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from("name,amount\nA,10\nB,\nC,20\n"),
+  });
+  await expect(page.getByText("วิเคราะห์เสร็จแล้ว")).toBeVisible();
+  await expect(page.getByText(/ช่องที่ว่างและต้องตรวจสอบ/)).toBeVisible();
+  await page.getByRole("button", { name: "ปัญหา" }).click();
+  await expect(page.getByText("ว่างหรือถูกกำหนดให้เป็นค่าว่าง")).toBeVisible();
+  await page.getByRole("button", { name: "Switch to English" }).click();
+  await expect(page.getByText("Analysis complete")).toBeVisible();
+});

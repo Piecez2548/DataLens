@@ -1,4 +1,5 @@
 import type { Analysis } from "./types";
+import { t, tReason } from "./i18n";
 
 export const issueKindLabels: Record<string, string> = {
   missing: "Missing values",
@@ -23,9 +24,9 @@ export function issueRows(data: Analysis): IssueRow[] {
     entry.examples.map((item) => ({
       kind,
       row: item.row,
-      column: item.column ?? "(entire row)",
+      column: item.column ?? t("(entire row)"),
       value: item.value ?? "",
-      reason: item.reason,
+      reason: tReason(item.reason),
     })),
   );
 }
@@ -52,10 +53,10 @@ const baseName = (data: Analysis) =>
 
 export function downloadIssuesCsv(data: Analysis) {
   const label = data.issue_samples.row_label;
-  const header = ["issue", label, "column", "value", "reason"].join(",");
+  const header = [t("Issue type"), t(label === "row" ? "Row" : "Record"), t("Column"), t("Value"), t("Why it was flagged")].join(",");
   const lines = issueRows(data).map((item) =>
     [
-      issueKindLabels[item.kind] ?? item.kind,
+      t(issueKindLabels[item.kind] ?? item.kind),
       item.row,
       item.column,
       item.value,
