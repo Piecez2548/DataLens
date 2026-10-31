@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Excel export of the located issue list (summary and issue sheets) and of the group summary, generated in the browser without a spreadsheet library; text cells are never evaluated as formulas.
+- "Print / Save as PDF" opens the executive brief and starts the print dialog. The brief's own print button used an inline handler that the site's content security policy blocks.
+- European number formats (`1.234,50`, `1 234,50`, `12,5`; a lone `1,234` stays English thousands) and dates with month names in English and Thai (`5 Jan 2024`, `March 7, 2024`, `9 มกราคม 2567`, `10 ก.พ. 2567`).
+- Thai translations for the remaining status text, counts and server error messages.
+- Performance: per-value work now runs once per distinct value. A 100,000-row, 8-column, 4 MB file takes about 5.6 s locally and about 22 s on the hosted service, inside the 60 s limit; the cold-start notice now says about 30 seconds.
+
 - Thai interface: a language switch (EN / ไทย, remembered in the browser) translates the workspace, tabs, issue locations, summary, comparison and governance panels, plus issue reasons and the exported executive brief. The server returns the executive summary in both languages (`executive.thai`); the canonical English `status` still drives approval.
 
 - Numbers: thousands separators (`1,234.50`), currency (`฿100`, `$2,000`, `300 บาท`), percent (`15%`, kept at face value) and accounting negatives (`(500)`) are numeric, with statistics, outliers and min/max rules. Malformed look-alikes stay text.

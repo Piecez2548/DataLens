@@ -1,4 +1,4 @@
-import { getLanguage, setLanguage, t, type Lang } from "./i18n";
+import { getLanguage, setLanguage, t, tError, tf, type Lang } from "./i18n";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import {
   Aperture,
@@ -21,7 +21,7 @@ import {
   UploadPolicy,
   type GovernanceInput,
 } from "./Governance";
-import { downloadExecutiveReport } from "./report";
+import { downloadExecutiveReport, printExecutiveReport } from "./report";
 import ChartBoundary from "./ChartBoundary";
 import Compare from "./Compare";
 import IssueExplorer from "./IssueExplorer";
@@ -421,7 +421,7 @@ export default function App() {
           />
           {error && (
             <div role="alert" className="error">
-              {error}
+              {tError(error)}
               <button aria-label="Dismiss error" onClick={() => setError("")}>
                 <X size={18} />
               </button>
@@ -429,15 +429,14 @@ export default function App() {
           )}
           {busy && slow && (
             <div role="status" className="slow-notice">
-              Still working. The first analysis after a quiet period can take up to
-              about 15 seconds while the service starts; later ones take under a second.
+              {t("Still working. The first analysis after a quiet period can take up to about 30 seconds while the service starts; later ones are much faster.")}
             </div>
           )}
           <div aria-live="polite" className="sr-only">
             {busy
-              ? "Analyzing your file"
+              ? t("Analyzing your file")
               : data
-                ? `${data.filename} analyzed, ${data.rows} rows`
+                ? tf("{name} analyzed, {rows} rows", { name: data.filename, rows: data.rows })
                 : ""}
           </div>
           {!data ? (
@@ -481,8 +480,7 @@ export default function App() {
                 <ArrowUpRight size={17} />
               </button>
               <small>
-                CSV (UTF-8, Thai Windows-874, UTF-16; comma, semicolon, tab or pipe) Excel .xlsx (choose any sheet) or JSON records · up to {MAX_UPLOAD_MB} MB · 100,000 rows · 100
-                columns
+                {tf("CSV (UTF-8, Thai Windows-874, UTF-16; comma, semicolon, tab or pipe), Excel .xlsx (choose any sheet) or JSON records · up to {mb} MB · 100,000 rows · 100 columns", { mb: MAX_UPLOAD_MB })}
               </small>
             </section>
           ) : (
@@ -494,7 +492,7 @@ export default function App() {
                 <div>
                   <strong>{data.filename}</strong>
                   <p>
-                    {fmt(data.rows)} rows · {data.column_count} columns
+                    {tf("{rows} rows · {columns} columns", { rows: fmt(data.rows), columns: data.column_count })}
                   </p>
                 </div>
                 <div className="file-actions">
@@ -512,6 +510,16 @@ export default function App() {
                   >
                     <Download size={15} /> {approved ? t("Export approved brief") : t("Export draft profile")}
                   </button>
+                  <button
+                    className="report-button"
+                    onClick={() => {
+                      if (!printExecutiveReport(data, auditEvents)) {
+                        setError("Your browser blocked the report window. Allow pop-ups for this site and try again.");
+                      }
+                    }}
+                  >
+                    <Download size={15} /> {t("Print / Save as PDF")}
+                  </button>
                   <span className="analyzed">
                     <Check size={14} />{t("Analysis complete")}</span>
                 </div>
@@ -519,19 +527,20 @@ export default function App() {
               <div className="provenance-strip" role="status">
                 <strong>{t("Uploaded source file")}</strong>
                 <span>
-                  All displayed values and metrics derive from this file; no
-                  data rows or values were invented.
+                  {t("All displayed values and metrics derive from this file; no data rows or values were invented.")}
                 </span>
                 <small>
-                  SHA-256 {data.provenance.sha256.slice(0, 12)}… · Method v
-                  {data.provenance.method_version} ·{" "}
-                  {data.provenance.source_format === "xlsx"
-                    ? `Excel sheet “${data.provenance.sheet}”`
-                    : data.provenance.source_format === "json"
-                      ? "JSON records"
-                      : `${data.provenance.encoding} · ${data.provenance.delimiter}`}{" "}
-                  ·{" "}
-                  {fmt(data.provenance.input_bytes)} bytes
+                  {tf("SHA-256 {hash}… · Method v{version} · {source} · {bytes} bytes", {
+                    hash: data.provenance.sha256.slice(0, 12),
+                    version: data.provenance.method_version,
+                    source:
+                      data.provenance.source_format === "xlsx"
+                        ? tf("Excel sheet “{sheet}”", { sheet: data.provenance.sheet ?? "" })
+                        : data.provenance.source_format === "json"
+                          ? t("JSON records")
+                          : `${data.provenance.encoding} · ${data.provenance.delimiter}`,
+                    bytes: fmt(data.provenance.input_bytes),
+                  })}
                 </small>
               </div>
               <nav className="tabs" aria-label="Dataset views">
@@ -553,7 +562,7 @@ export default function App() {
                     <section className="header-notice" role="status">
                       <FileSpreadsheet size={20} />
                       <div>
-                        <strong>This workbook has {data.provenance.sheets.length} sheets</strong>
+                        <strong>{tf("This workbook has {count} sheets", { count: data.provenance.sheets.length })}</strong>
                         <p>{t("Each sheet is analyzed on its own. Choose the sheet to analyze.")}</p>
                       </div>
                       <select
@@ -580,7 +589,7 @@ export default function App() {
                       <CircleAlert size={20} />
                       <div>
                         <strong>
-                          Row {data.provenance.header_row_suggestion} looks like the column names
+                          {tf("Row {row} looks like the column names", { row: data.provenance.header_row_suggestion })}
                         </strong>
                         <p>{t("Rows above it look like a title or notes, so they are being read as data.")}</p>
                       </div>
@@ -597,7 +606,7 @@ export default function App() {
                           });
                         }}
                       >
-                        Use row {data.provenance.header_row_suggestion} as headers
+                        {tf("Use row {row} as headers", { row: data.provenance.header_row_suggestion })}
                       </button>
                     </section>
                   )}

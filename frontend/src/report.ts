@@ -13,7 +13,7 @@ const escapeHtml = (value: unknown) =>
 const number = (value: number) =>
   value.toLocaleString(undefined, { maximumFractionDigits: 2 });
 
-export function downloadExecutiveReport(data: Analysis, auditEvents: AuditEvent[]) {
+function buildReport(data: Analysis, auditEvents: AuditEvent[]) {
   const generatedAt = new Date().toLocaleString();
   const approved = auditEvents.some(
     (event) => event.action === "analysis.approved" && event.analysis_id === data.governance.analysis_id,
@@ -97,17 +97,40 @@ ${ruleRows ? `<section><h2>${t("Business validation rules")}</h2><table><thead><
 <section><h2>${t("Session review record")}</h2>${auditRows ? `<table><thead><tr><th>${t("Event")}</th><th>${t("UTC timestamp")}</th><th>${t("Full service signature")}</th></tr></thead><tbody>${auditRows}</tbody></table>` : "<p>No review event was recorded.</p>"}<p>The service signature protects the event metadata while the signing key remains controlled. This downloaded HTML is not centrally retained and can be edited after download, so it is not a durable or independently verifiable audit ledger.</p></section>
 <section><h2>${t("Decision note")}</h2><p class="method">${escapeHtml(executive.scope_note)} Correlations use complete finite numeric pairs and do not establish causation. Potential outliers use the 1.5×IQR rule. Validate findings against business definitions before making material decisions.</p></section>
 </main></body></html>`;
-  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
   const safeName = data.filename
     .replace(/\.[a-z0-9]+$/i, "")
     .replace(/[^a-z0-9_-]+/gi, "-")
     .replace(/^-+|-+$/g, "");
+  return { html, safeName: safeName || "dataset" };
+}
+
+export function downloadExecutiveReport(data: Analysis, auditEvents: AuditEvent[]) {
+  const { html, safeName } = buildReport(data, auditEvents);
+  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
   link.href = url;
-  link.download = `${safeName || "dataset"}-executive-brief.html`;
+  link.download = `${safeName}-executive-brief.html`;
   document.body.append(link);
   link.click();
   link.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+/** Opens the brief in a new tab and starts the browser print dialog, where "Save as PDF" is available.
+ * The page's own button uses an inline handler that the site CSP blocks, so printing is triggered from here. */
+export function printExecutiveReport(data: Analysis, auditEvents: AuditEvent[]): boolean {
+  const { html } = buildReport(data, auditEvents);
+  const url = URL.createObjectURL(new Blob([html], { type: "text/html;charset=utf-8" }));
+  const popup = window.open(url, "_blank");
+  if (!popup) {
+    URL.revokeObjectURL(url);
+    return false;
+  }
+  popup.addEventListener("load", () => {
+    popup.focus();
+    popup.print();
+  });
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  return true;
 }

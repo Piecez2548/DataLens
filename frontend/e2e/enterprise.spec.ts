@@ -168,9 +168,16 @@ test("reads every sheet of a workbook and locates issues for export", async ({ p
   await expect(page.getByRole("cell", { name: "Blank or marked as missing" })).toBeVisible();
   const [download] = await Promise.all([
     page.waitForEvent("download"),
-    page.getByRole("button", { name: /Export issue list/ }).click(),
+    page.getByRole("button", { name: /Export issue list \(CSV\)/ }).click(),
   ]);
   expect(download.suggestedFilename()).toBe("two-sheets-issues.csv");
+
+  const [workbook] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: /Export issue list \(Excel\)/ }).click(),
+  ]);
+  expect(workbook.suggestedFilename()).toBe("two-sheets-issues.xlsx");
+  await workbook.saveAs("test-results/issues-export.xlsx");
 });
 
 test("analyzes a JSON file of records", async ({ page }) => {
@@ -228,4 +235,28 @@ test("switches the interface and executive brief to Thai", async ({ page }) => {
   await expect(page.getByText("ว่างหรือถูกกำหนดให้เป็นค่าว่าง")).toBeVisible();
   await page.getByRole("button", { name: "Switch to English" }).click();
   await expect(page.getByText("Analysis complete")).toBeVisible();
+});
+
+test("opens the executive brief for printing as PDF", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel(/I am allowed to analyze this file/).check();
+  await page
+    .getByLabel("Upload CSV file")
+    .setInputFiles(path.resolve("../samples/demo.csv"));
+  await expect(page.getByText("164 rows · 6 columns")).toBeVisible();
+  await page.evaluate(() => {
+    (window as unknown as { __printed: boolean }).__printed = false;
+    const original = window.open.bind(window);
+    window.open = (...args) => {
+      const popup = original(...args);
+      if (popup) popup.print = () => ((window as unknown as { __printed: boolean }).__printed = true);
+      return popup;
+    };
+  });
+  const popupPromise = page.waitForEvent("popup");
+  await page.getByRole("button", { name: "Print / Save as PDF" }).click();
+  const popup = await popupPromise;
+  await popup.waitForLoadState("load");
+  await expect(popup.getByRole("heading", { name: /Draft structural profile/ })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __printed: boolean }).__printed)).toBe(true);
 });

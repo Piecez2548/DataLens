@@ -39,6 +39,21 @@ PLAIN_NUMBER = re.compile(
 )
 
 
+EURO_NUMBER = re.compile(r"[+-]?(?:\d{1,3}(?:[. \u00a0]\d{3})+|\d+),(\d+)")
+
+
+def _euro_number(text: str) -> float | None:
+    """1.234,50 / 1 234,50 / 12,5 -> float. A lone comma followed by exactly three digits is English thousands."""
+    match = EURO_NUMBER.fullmatch(text)
+    if not match:
+        return None
+    integer_part = text[: match.start(1) - 1]
+    grouped = bool(re.search(r"[. \u00a0]\d{3}", integer_part))
+    if not grouped and len(match.group(1)) == 3:
+        return None
+    return float(re.sub(r"[. \u00a0]", "", integer_part) + "." + match.group(1))
+
+
 @lru_cache(maxsize=200_000)
 def _parse_number(value: str) -> tuple[float | None, str | None]:
     """Parse plain, thousands-separated, currency, percent and accounting-negative numbers.
@@ -47,6 +62,8 @@ def _parse_number(value: str) -> tuple[float | None, str | None]:
     text = value.strip()
     if PLAIN_NUMBER.fullmatch(text):
         return float(text.replace(",", "")), None
+    if (european := _euro_number(text)) is not None:
+        return european, None
     negative = False
     if len(text) > 2 and text[0] == "(" and text[-1] == ")":
         negative, text = True, text[1:-1].strip()
@@ -63,6 +80,8 @@ def _parse_number(value: str) -> tuple[float | None, str | None]:
     if sign and text[:1] in ("+", "-"):
         return None, None
     if not PLAIN_NUMBER.fullmatch(text):
+        if (european := _euro_number(text)) is not None:
+            return (-european if negative != (sign == "-") else european), fmt
         return None, None
     number = float((sign + text).replace(",", ""))
     if fmt and not np.isfinite(number):
@@ -70,14 +89,44 @@ def _parse_number(value: str) -> tuple[float | None, str | None]:
     return (-number if negative else number), fmt
 
 
+def _map_unique(series: pd.Series, function) -> pd.Series:
+    """Apply a per-value function once per distinct value; repetitive columns are far cheaper this way."""
+    mapping = {value: function(value) for value in series.dropna().unique()}
+    return series.map(mapping)
+
+
 def _numeric_series(series: pd.Series) -> pd.Series:
-    return series.map(lambda cell: _parse_number(cell)[0] if isinstance(cell, str) else None).astype(float)
+    return _map_unique(series, lambda cell: _parse_number(cell)[0]).astype(float)
+
+
+MONTH_NAMES = {
+    **{name: number for number, name in enumerate(
+        ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"], 1)},
+    **{name: number for number, name in enumerate(
+        ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"], 1)},
+    "sept": 9,
+    **{name: number for number, name in enumerate(
+        ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"], 1)},
+    **{name: number for number, name in enumerate(
+        ["ม.ค", "ก.พ", "มี.ค", "เม.ย", "พ.ค", "มิ.ย", "ก.ค", "ส.ค", "ก.ย", "ต.ค", "พ.ย", "ธ.ค"], 1)},
+}
+MONTH_TOKEN = r"[^\s\d/\-.,]+(?:\.[^\s\d/\-.,]+)*\.?"
+DATE_DAY_MONTH_NAME = re.compile(rf"(\d{{1,2}})[ \-/.]*({MONTH_TOKEN})[ \-/.,]*(\d{{4}})")
+DATE_MONTH_NAME_DAY = re.compile(rf"({MONTH_TOKEN})[ .]+(\d{{1,2}}),?[ ]+(\d{{4}})")
+
+
+def _month_number(token: str) -> int | None:
+    return MONTH_NAMES.get(token.strip().lower().rstrip("."))
 
 
 def _date_parts(value: str, order: str = "dmy") -> tuple[int, int, int] | None:
     """Return (year, month, day) for a date-shaped value; D/M/YYYY unless order is "mdy". None when not date-shaped."""
     if match := DATE_YMD.fullmatch(value):
         return int(match[1]), int(match[2]), int(match[3])
+    if (match := DATE_DAY_MONTH_NAME.fullmatch(value)) and (month := _month_number(match[2])) is not None:
+        return int(match[3]), month, int(match[1])
+    if (match := DATE_MONTH_NAME_DAY.fullmatch(value)) and (month := _month_number(match[1])) is not None:
+        return int(match[3]), month, int(match[2])
     if match := DATE_DMY.fullmatch(value):
         first, second = int(match[1]), int(match[2])
         return (int(match[3]), second, first) if order == "dmy" else (int(match[3]), first, second)
@@ -120,13 +169,18 @@ def _detect_personal_pattern(name: str, values: pd.Series) -> str | None:
     if not len(values):
         return None
     lowered = name.lower()
-    compact = values.str.replace(r"[\s-]", "", regex=True)
-    id_shaped = compact.map(lambda value: bool(THAI_ID_PATTERN.fullmatch(value)))
-    if id_shaped.mean() >= 0.8:
-        valid_share = compact[id_shaped].map(_thai_id_valid).mean()
+    counts = values.value_counts()
+    weights = counts.to_numpy()
+    total = weights.sum()
+    compact = [re.sub(r"[\s-]", "", value) for value in counts.index]
+    id_shaped = np.array([bool(THAI_ID_PATTERN.fullmatch(value)) for value in compact])
+    if weights[id_shaped].sum() / total >= 0.8:
+        valid = np.array([_thai_id_valid(value) for value in compact])
+        valid_share = weights[id_shaped & valid].sum() / weights[id_shaped].sum()
         if valid_share >= 0.5 or any(hint in lowered for hint in THAI_ID_NAME_HINTS):
             return "thai_national_id"
-    if compact.map(lambda value: bool(THAI_PHONE_PATTERN.fullmatch(value))).mean() >= 0.8:
+    phone_shaped = np.array([bool(THAI_PHONE_PATTERN.fullmatch(value)) for value in compact])
+    if weights[phone_shaped].sum() / total >= 0.8:
         return "thai_phone"
     return None
 
@@ -714,12 +768,12 @@ def analyze(
                 return "datetime"
             return "categorical"
 
-        kinds = values.map(kind)
+        kinds = _map_unique(values, kind)
         counts = Counter(kinds)
         dominant = counts.most_common(1)[0][0] if counts else "empty"
         inferred = dominant if counts and counts[dominant] / len(values) > 0.5 else "categorical"
         normalized_name = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
-        email_hits = int(values.map(lambda value: bool(EMAIL_PATTERN.fullmatch(value))).sum())
+        email_hits = int(_map_unique(values, lambda value: bool(EMAIL_PATTERN.fullmatch(value))).sum())
         if values.size and ("email" in normalized_name or email_hits / len(values) >= 0.8):
             inferred = "email"
         if normalized_name in {"id", "customer_id", "record_id", "user_id"} or normalized_name.endswith("_id"):
@@ -769,15 +823,15 @@ def analyze(
                     for i, count in enumerate(heights)
                 ]
         elif dtype == "datetime":
-            invalid_dates = ~matched.map(lambda value: _is_valid_date(value, chosen_date_order))
+            invalid_dates = ~_map_unique(matched, lambda value: _is_valid_date(value, chosen_date_order)).astype(bool)
             bad = int(invalid_dates.sum())
             sample("invalid", matched.index[invalid_dates], name, "Not a valid calendar date")
         elif dtype == "email":
-            invalid_emails = ~matched.map(lambda value: bool(EMAIL_PATTERN.fullmatch(value)))
+            invalid_emails = ~_map_unique(matched, lambda value: bool(EMAIL_PATTERN.fullmatch(value))).astype(bool)
             bad = int(invalid_emails.sum())
             sample("invalid", matched.index[invalid_emails], name, "Not a valid email shape")
         elif pattern == "thai_national_id":
-            invalid_ids = ~matched.str.replace(r"[\s-]", "", regex=True).map(_thai_id_valid)
+            invalid_ids = ~_map_unique(matched, lambda value: _thai_id_valid(re.sub(r"[\s-]", "", value))).astype(bool)
             bad = int(invalid_ids.sum())
             sample("invalid", matched.index[invalid_ids], name, "Thai national ID check digit is wrong")
         if dtype in {"numeric", "datetime", "boolean", "email"} or pattern == "thai_national_id":

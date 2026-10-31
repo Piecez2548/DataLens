@@ -1,10 +1,11 @@
-import { t, tReason } from "./i18n";
+import { t, tf, tReason } from "./i18n";
 import { useState } from "react";
 import { Download } from "lucide-react";
 import type { Analysis } from "./types";
 import {
   downloadIssuesCsv,
   downloadIssuesJson,
+  downloadIssuesXlsx,
   issueKindLabels,
 } from "./issueExport";
 
@@ -44,6 +45,8 @@ export default function IssueExplorer({ data }: { data: Analysis }) {
         <div className="file-actions">
           <button className="report-button" onClick={() => downloadIssuesCsv(data)}>
             <Download size={15} />{t("Export issue list (CSV)")}</button>
+          <button className="report-button" onClick={() => downloadIssuesXlsx(data)}>
+            <Download size={15} />{t("Export issue list (Excel)")}</button>
           <button className="report-button" onClick={() => downloadIssuesJson(data)}>
             <Download size={15} />{t("Export (JSON)")}</button>
         </div>
@@ -96,10 +99,10 @@ export default function IssueExplorer({ data }: { data: Analysis }) {
         </table>
       </div>
       <p className="muted">
-        Showing {Math.min(examples.length, 100)} of {fmt(entry?.total ?? 0)}.
+        {tf("Showing {shown} of {total}.", { shown: Math.min(examples.length, 100), total: fmt(entry?.total ?? 0) })}
         {entry && entry.total > entry.examples.length
-          ? ` Only the first ${fmt(entry.examples.length)} are listed and exported; fix them and re-upload to see the rest.`
-          : " The export contains the complete list."}
+          ? tf(" Only the first {listed} are listed and exported; fix them and re-upload to see the rest.", { listed: fmt(entry.examples.length) })
+          : t(" The export contains the complete list.")}
       </p>
     </section>
   );

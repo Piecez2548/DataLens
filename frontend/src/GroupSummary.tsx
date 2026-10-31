@@ -1,6 +1,7 @@
-import { t } from "./i18n";
+import { t, tf } from "./i18n";
 import { Download } from "lucide-react";
 import type { Analysis } from "./types";
+import { downloadWorkbook } from "./xlsx";
 
 const fmt = (n: number | null) =>
   n === null ? "—" : n.toLocaleString(undefined, { maximumFractionDigits: 2 });
@@ -54,6 +55,16 @@ export default function GroupSummary({
     link.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
   }
+  function exportXlsx() {
+    if (!summary) return;
+    downloadWorkbook("group-summary.xlsx", [
+      {
+        name: t("Summary by group"),
+        header: [summary.by, t("Rows"), t("Sum"), t("Average"), t("Min"), t("Max")],
+        rows: summary.rows.map((row) => [row.group, row.rows, row.sum, row.mean, row.min, row.max]),
+      },
+    ]);
+  }
   return (
     <section className="panel group-summary">
       <div className="section-title">
@@ -79,8 +90,12 @@ export default function GroupSummary({
         </label>
         <button className="primary" disabled={busy || !by} onClick={onApply}>{t("Show summary")}</button>
         {summary && (
-          <button className="report-button" onClick={exportCsv}>
-            <Download size={15} />{t("Export summary (CSV)")}</button>
+          <>
+            <button className="report-button" onClick={exportXlsx}>
+              <Download size={15} />{t("Export summary (Excel)")}</button>
+            <button className="report-button" onClick={exportCsv}>
+              <Download size={15} />{t("Export summary (CSV)")}</button>
+          </>
         )}
       </div>
       {summary && (
@@ -130,10 +145,9 @@ export default function GroupSummary({
           </div>
           <p className="muted">
             {summary.truncated
-              ? `Showing the top 50 of ${fmt(summary.total_groups)} groups. `
-              : `${fmt(summary.total_groups)} group(s). `}
-            Blank values are grouped as “(blank)”. Sums and averages skip blank
-            and non-numeric cells in the measure.
+              ? tf("Showing the top 50 of {groups} groups. ", { groups: fmt(summary.total_groups) })
+              : tf("{groups} group(s). ", { groups: fmt(summary.total_groups) })}
+            {t("Blank values are grouped as “(blank)”. Sums and averages skip blank and non-numeric cells in the measure.")}
           </p>
         </>
       )}

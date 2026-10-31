@@ -215,6 +215,35 @@ const th: Record<string, string> = {
   "Value distribution": "การกระจายของค่า",
   "Most frequent values": "ค่าที่พบบ่อยที่สุด",
   "(entire row)": "(ทั้งแถว)",
+  "Print / Save as PDF": "พิมพ์ / บันทึกเป็น PDF",
+  "Export issue list (Excel)": "ส่งออกรายการปัญหา (Excel)",
+  "Export summary (Excel)": "ส่งออกสรุป (Excel)",
+  Total: "ทั้งหมด",
+  Listed: "แสดงในรายการ",
+  File: "ไฟล์",
+  Status: "สถานะ",
+  Sum: "ผลรวม",
+  "{rows} rows · {columns} columns": "{rows} แถว · {columns} คอลัมน์",
+  "All displayed values and metrics derive from this file; no data rows or values were invented.": "ค่าและตัวชี้วัดที่แสดงทั้งหมดมาจากไฟล์นี้ ไม่มีการสร้างแถวหรือค่าขึ้นเอง",
+  "SHA-256 {hash}… · Method v{version} · {source} · {bytes} bytes": "SHA-256 {hash}… · วิธีวิเคราะห์ v{version} · {source} · {bytes} ไบต์",
+  "Excel sheet “{sheet}”": "ชีต Excel “{sheet}”",
+  "JSON records": "ระเบียน JSON",
+  "This workbook has {count} sheets": "สมุดงานนี้มี {count} ชีต",
+  "Row {row} looks like the column names": "แถวที่ {row} ดูเหมือนชื่อคอลัมน์",
+  "Use row {row} as headers": "ใช้แถวที่ {row} เป็นหัวตาราง",
+  "Still working. The first analysis after a quiet period can take up to about 30 seconds while the service starts; later ones are much faster.": "กำลังทำงาน การวิเคราะห์ครั้งแรกหลังไม่มีการใช้งานอาจใช้เวลาถึงประมาณ 30 วินาทีขณะบริการเริ่มทำงาน ครั้งต่อไปจะเร็วกว่ามาก",
+  "Analyzing your file": "กำลังวิเคราะห์ไฟล์ของคุณ",
+  "{name} analyzed, {rows} rows": "วิเคราะห์ {name} แล้ว {rows} แถว",
+  "CSV (UTF-8, Thai Windows-874, UTF-16; comma, semicolon, tab or pipe), Excel .xlsx (choose any sheet) or JSON records · up to {mb} MB · 100,000 rows · 100 columns": "CSV (UTF-8, Windows-874 ไทย, UTF-16; คั่นด้วย , ; แท็บ หรือ |), Excel .xlsx (เลือกได้ทุกชีต) หรือระเบียน JSON · ไม่เกิน {mb} MB · 100,000 แถว · 100 คอลัมน์",
+  "Showing {shown} of {total}.": "แสดง {shown} จาก {total}",
+  " Only the first {listed} are listed and exported; fix them and re-upload to see the rest.": " แสดงและส่งออกเฉพาะ {listed} รายการแรก แก้ไขแล้วอัปโหลดใหม่เพื่อดูส่วนที่เหลือ",
+  " The export contains the complete list.": " ไฟล์ส่งออกมีรายการครบทั้งหมด",
+  "Showing the top 50 of {groups} groups. ": "แสดง 50 กลุ่มแรกจากทั้งหมด {groups} กลุ่ม ",
+  "{groups} group(s). ": "{groups} กลุ่ม ",
+  "Blank values are grouped as “(blank)”. Sums and averages skip blank and non-numeric cells in the measure.": "ค่าว่างถูกจัดเป็นกลุ่ม “(blank)” ผลรวมและค่าเฉลี่ยข้ามช่องว่างและช่องที่ไม่ใช่ตัวเลข",
+  "vs": "เทียบกับ",
+  "Both analyses stay in this browser session.": "ผลวิเคราะห์ทั้งสองอยู่ในเซสชันเบราว์เซอร์นี้เท่านั้น",
+  "Dismiss error": "ปิดข้อความผิดพลาด",
   Generated: "จัดทำเมื่อ",
   "Find the exact rows to correct in the source file. Row numbers match the original file, counting the header.": "ค้นหาแถวที่ต้องแก้ไขในไฟล์ต้นฉบับ เลขแถวตรงกับไฟล์เดิมโดยนับแถวหัวตารางด้วย",
   "Find the exact records to correct in the source file. Record numbers follow the order in the file.": "ค้นหาระเบียนที่ต้องแก้ไขในไฟล์ต้นฉบับ เลขระเบียนเรียงตามลำดับในไฟล์",
@@ -249,6 +278,14 @@ const th: Record<string, string> = {
   unchanged: "เหมือนเดิม",
 };
 
+/** Translate a template with {name} placeholders, then fill them in. */
+export function tf(text: string, values: Record<string, string | number>): string {
+  return Object.entries(values).reduce(
+    (result, [key, value]) => result.replaceAll(`{${key}}`, String(value)),
+    t(text),
+  );
+}
+
 export function t(text: string): string {
   return current === "th" ? (th[text] ?? text) : text;
 }
@@ -268,6 +305,38 @@ const reasonRules: [RegExp, (m: RegExpMatchArray) => string][] = [
   [/^Above the maximum (.+)$/, (m) => `สูงกว่าค่าสูงสุด ${m[1]}`],
   [/^Repeats a key first seen at row (\d+)$/, (m) => `คีย์ซ้ำกับที่พบครั้งแรกที่แถว ${m[1]}`],
 ];
+
+const errorRules: [RegExp, (m: RegExpMatchArray) => string][] = [
+  [/^Choose a CSV, XLSX or JSON file no larger than (\d+) MB\.$/, (m) => `เลือกไฟล์ CSV, XLSX หรือ JSON ที่ไม่เกิน ${m[1]} MB`],
+  [/^Cannot reach the analysis service\./, () => "เชื่อมต่อบริการวิเคราะห์ไม่ได้ กรุณาลองใหม่อีกครั้ง"],
+  [/^Your browser blocked the report window/, () => "เบราว์เซอร์บล็อกหน้าต่างรายงาน กรุณาอนุญาตป๊อปอัปสำหรับเว็บไซต์นี้แล้วลองอีกครั้ง"],
+  [/^Confirm that you are allowed to upload/, () => "ยืนยันก่อนว่าคุณได้รับอนุญาตให้อัปโหลดไฟล์นี้"],
+  [/^Every row must have the same number of fields: (.+?)\. If the table starts lower/, (m) => `ทุกแถวต้องมีจำนวนช่องเท่ากัน: ${m[1]} หากตารางเริ่มต่ำกว่านี้ ให้ระบุแถวหัวตาราง`],
+  [/^CSV exceeds the (\d+) MB limit\.$/, (m) => `ไฟล์ใหญ่เกิน ${m[1]} MB`],
+  [/^Maximum 100,000 rows supported\.$/, () => "รองรับสูงสุด 100,000 แถว"],
+  [/^Maximum 100 columns supported\.$/, () => "รองรับสูงสุด 100 คอลัมน์"],
+  [/^Use a UTF-8, UTF-16 or Thai Windows-874/, () => "ใช้ไฟล์ที่เข้ารหัสแบบ UTF-8, UTF-16 หรือ Windows-874 ของไทย"],
+  [/^The Excel workbook could not be read\.$/, () => "อ่านไฟล์ Excel ไม่ได้"],
+  [/^The selected worksheet does not exist/, () => "ไม่พบชีตที่เลือกในไฟล์นี้"],
+  [/^The JSON file is not valid JSON/, () => "ไฟล์ JSON ไม่ถูกต้อง"],
+  [/^The JSON must contain a non-empty array/, () => "JSON ต้องมีอาร์เรย์ของระเบียนที่ไม่ว่าง"],
+  [/^The header row must be a row number inside the file\.$/, () => "แถวหัวตารางต้องเป็นเลขแถวที่อยู่ในไฟล์"],
+  [/^Column names must be unique\.$/, () => "ชื่อคอลัมน์ต้องไม่ซ้ำกัน"],
+  [/^The business key must list/, () => "คีย์ทางธุรกิจต้องเป็นคอลัมน์ที่มีอยู่จริงไม่ซ้ำกัน ไม่เกิน 5 คอลัมน์"],
+  [/^Please upload a \.csv, \.xlsx or \.json file\.$/, () => "กรุณาอัปโหลดไฟล์ .csv, .xlsx หรือ .json"],
+  [/^Authorization for this non-personal file/, () => "ต้องยืนยันสิทธิ์ใช้ไฟล์ที่ไม่ใช่ข้อมูลส่วนบุคคลนี้ก่อนวิเคราะห์"],
+  [/^This file exceeds the hosting upload limit\.$/, () => "ไฟล์เกินขีดจำกัดการอัปโหลดของระบบโฮสต์"],
+  [/^Analysis is temporarily unavailable/, () => "ระบบวิเคราะห์ใช้งานไม่ได้ชั่วคราว กรุณาลองใหม่"],
+];
+
+export function tError(message: string): string {
+  if (current !== "th") return message;
+  for (const [pattern, build] of errorRules) {
+    const match = message.match(pattern);
+    if (match) return build(match);
+  }
+  return message;
+}
 
 export function tReason(reason: string): string {
   if (current !== "th") return reason;

@@ -1,5 +1,6 @@
 import type { Analysis } from "./types";
 import { t, tReason } from "./i18n";
+import { downloadWorkbook } from "./xlsx";
 
 export const issueKindLabels: Record<string, string> = {
   missing: "Missing values",
@@ -67,6 +68,37 @@ export function downloadIssuesCsv(data: Analysis) {
   );
   // The BOM lets Excel open Thai text correctly.
   download(`${baseName(data)}-issues.csv`, "text/csv;charset=utf-8", [header, ...lines].join("\r\n"), "﻿");
+}
+
+export function downloadIssuesXlsx(data: Analysis) {
+  const label = t(data.issue_samples.row_label === "row" ? "Row" : "Record");
+  const kinds = Object.entries(data.issue_samples.kinds).filter(([, entry]) => entry.total > 0);
+  downloadWorkbook(`${baseName(data)}-issues.xlsx`, [
+    {
+      name: t("Summary"),
+      header: [t("Issue type"), t("Total"), t("Listed")],
+      rows: [
+        [t("File"), data.filename, null],
+        [t("Status"), t(data.executive.status), null],
+        ...kinds.map(([kind, entry]): (string | number | null)[] => [
+          t(issueKindLabels[kind] ?? kind),
+          entry.total,
+          entry.examples.length,
+        ]),
+      ],
+    },
+    {
+      name: t("Issues"),
+      header: [t("Issue type"), label, t("Column"), t("Value"), t("Why it was flagged")],
+      rows: issueRows(data).map((item) => [
+        t(issueKindLabels[item.kind] ?? item.kind),
+        item.row,
+        item.column,
+        item.value,
+        item.reason,
+      ]),
+    },
+  ]);
 }
 
 export function downloadIssuesJson(data: Analysis) {

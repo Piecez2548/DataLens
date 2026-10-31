@@ -667,3 +667,20 @@ def test_executive_summary_is_provided_in_thai_without_changing_the_status():
     assert len(thai["issues"]) == len(executive["issues"])
     assert "ช่อง" in thai["issues"][0]["title"]
     assert thai["scope_note"] != executive["scope_note"]
+
+
+def test_european_numbers_are_numeric_but_english_thousands_are_not_misread():
+    content = 'v\n"1.234,50"\n"12,5"\n"1 234,5"\n"€2.000,00"\n'.encode()
+    column = analyze(content, "eu.csv", "present")["columns"][0]
+    assert column["type"] == "numeric"
+    assert (column["stats"]["min"], column["stats"]["max"]) == (12.5, 2000.0)
+    english = analyze(b'v\n"1,234"\n"2,500"\n', "en.csv", "present")["columns"][0]
+    assert english["stats"]["max"] == 2500.0
+
+
+def test_named_month_dates_in_english_and_thai_are_dates():
+    content = "d\n5 Jan 2024\n05-Feb-2024\n\"March 7, 2024\"\n9 มกราคม 2567\n10 ก.พ. 2567\n31 Feb 2024\n".encode()
+    column = analyze(content, "named.csv", "present")["columns"][0]
+    assert column["type"] == "datetime"
+    assert column["mismatches"] == 0
+    assert column["invalid"] == 1

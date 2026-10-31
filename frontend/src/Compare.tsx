@@ -47,9 +47,9 @@ export default function Compare({
       <div className="section-title">
         <div>
           <h2 id="compare-title">{t("Compare files")}</h2>
-          <p>{t("Baseline")}<strong>{base.filename}</strong> vs{" "}
-            <strong>{other.filename}</strong>. Both analyses stay in this
-            browser session.
+          <p>
+            {t("Baseline")} <strong>{base.filename}</strong> {t("vs")}{" "}
+            <strong>{other.filename}</strong>. {t("Both analyses stay in this browser session.")}
           </p>
         </div>
         <button className="text-button" onClick={onClose}>{t("Close comparison")}</button>
