@@ -84,7 +84,7 @@ function buildReport(data: Analysis, auditEvents: AuditEvent[], extras: ReportEx
   const sheetRows = (extras.sheets ?? [])
     .map(
       (item) =>
-        `<tr><td>${escapeHtml(item.sheet)}</td><td>${item.error ? `<em>${escapeHtml(item.error)}</em>` : `${number(item.rows)} × ${number(item.columns)}`}</td><td>${item.error ? "" : escapeHtml(t(item.status))}</td><td>${item.error ? "" : number(item.issues)}</td><td>${item.error ? "" : escapeHtml(Object.entries(item.scores).map(([label, score]) => `${label} ${score === null ? "N/A" : `${number(score)}%`}`).join(" · "))}</td></tr>`,
+        `<tr><td>${escapeHtml(item.sheet)}</td><td>${item.error ? `<em>${escapeHtml(item.error)}</em>` : `${number(item.rows)} × ${number(item.columns)}`}</td><td>${item.error ? "" : escapeHtml(t(item.status))}</td><td>${item.error ? "" : number(item.issues)}</td><td>${item.error ? "" : escapeHtml(Object.entries(item.scores).map(([label, score]) => `${t(label)} ${score === null ? "N/A" : `${number(score)}%`}`).join(" · "))}</td></tr>`,
     )
     .join("");
   const auditRows = auditEvents

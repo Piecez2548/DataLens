@@ -47,7 +47,7 @@ export default function SheetOverview({
                     <td>{fmt(item.issues)}</td>
                     <td>
                       {Object.entries(item.scores)
-                        .map(([label, score]) => `${label} ${score === null ? "N/A" : `${fmt(score)}%`}`)
+                        .map(([label, score]) => `${t(label)} ${score === null ? "N/A" : `${fmt(score)}%`}`)
                         .join(" · ")}
                     </td>
                   </>
