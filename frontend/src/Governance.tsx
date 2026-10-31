@@ -1,4 +1,6 @@
+import { useState } from "react";
 import type { Analysis, AuditEvent, BusinessRule } from "./types";
+import { loadTemplates, saveTemplates } from "./ruleTemplates";
 
 export type GovernanceInput = {
   owner: string;
@@ -130,6 +132,7 @@ export function GovernancePanel({
   canApprove,
   onRule,
   onApplyRules,
+  onLoadRules,
   onAudit,
 }: {
   data: Analysis;
@@ -139,6 +142,7 @@ export function GovernancePanel({
   canApprove: boolean;
   onRule: (column: string, rule: BusinessRule) => void;
   onApplyRules: () => void;
+  onLoadRules: (rules: Record<string, BusinessRule>) => void;
   onAudit: (action: "review" | "approve", note: string) => void;
 }) {
   return (
@@ -167,6 +171,11 @@ export function GovernancePanel({
             Use these only when your organization has an agreed definition of
             valid values.
           </p>
+          <RuleTemplatePicker
+            rules={rules}
+            columns={data.columns.map((column) => column.name)}
+            onLoad={onLoadRules}
+          />
           <div className="rule-grid">
             {data.columns.map((column) => {
               const rule = rules[column.name] ?? {};
@@ -268,6 +277,83 @@ export function GovernancePanel({
         />
       </div>
     </details>
+  );
+}
+
+function RuleTemplatePicker({
+  rules,
+  columns,
+  onLoad,
+}: {
+  rules: Record<string, BusinessRule>;
+  columns: string[];
+  onLoad: (rules: Record<string, BusinessRule>) => void;
+}) {
+  const [templates, setTemplates] = useState(loadTemplates);
+  const [name, setName] = useState("");
+  const [chosen, setChosen] = useState("");
+  const [message, setMessage] = useState("");
+  const names = Object.keys(templates).sort();
+  const hasRules = Object.keys(rules).length > 0;
+  function save() {
+    const label = name.trim();
+    if (!label || !hasRules) return;
+    const next = { ...templates, [label]: rules };
+    setTemplates(next);
+    setMessage(
+      saveTemplates(next)
+        ? `Saved “${label}” in this browser. Only column names and rule values are stored.`
+        : "This browser blocked local storage, so the template was not saved.",
+    );
+    setChosen(label);
+  }
+  function load() {
+    const template = templates[chosen];
+    if (!template) return;
+    const matching = Object.fromEntries(
+      Object.entries(template).filter(([column]) => columns.includes(column)),
+    );
+    const skipped = Object.keys(template).length - Object.keys(matching).length;
+    onLoad(matching);
+    setMessage(
+      `Loaded ${Object.keys(matching).length} column rule(s)${skipped ? `; ${skipped} skipped because the column is not in this file` : ""}. Choose “Check these rules” to apply them.`,
+    );
+  }
+  function remove() {
+    const { [chosen]: _removed, ...rest } = templates;
+    void _removed;
+    setTemplates(rest);
+    saveTemplates(rest);
+    setChosen("");
+    setMessage("Template deleted.");
+  }
+  return (
+    <div className="rule-templates">
+      <label>
+        Saved rule templates
+        <select value={chosen} onChange={(event) => setChosen(event.target.value)}>
+          <option value="">{names.length ? "Choose a template" : "No templates yet"}</option>
+          {names.map((item) => (
+            <option key={item}>{item}</option>
+          ))}
+        </select>
+      </label>
+      <button type="button" disabled={!chosen} onClick={load}>Load template</button>
+      <button type="button" disabled={!chosen} onClick={remove}>Delete template</button>
+      <label>
+        Template name
+        <input
+          value={name}
+          maxLength={60}
+          onChange={(event) => setName(event.target.value)}
+          placeholder="For example, Monthly sales"
+        />
+      </label>
+      <button type="button" disabled={!name.trim() || !hasRules} onClick={save}>
+        Save current rules
+      </button>
+      {message && <p role="status">{message}</p>}
+    </div>
   );
 }
 

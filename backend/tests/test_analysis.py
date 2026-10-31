@@ -147,8 +147,11 @@ def test_provenance_fingerprints_the_exact_input_without_generating_values():
         "analyzed_rows": 2,
         "preview_rows": 2,
         "method_version": "0.7.1",
+        "source_format": "csv",
+        "sheet": None,
         "encoding": "utf-8",
         "delimiter": "comma",
+        "missing_markers": [],
         "calculation_mode": "deterministic",
         "data_values_generated": False,
     }
@@ -381,6 +384,98 @@ def test_numeric_rule_rejects_boolean_and_inverted_range():
 def test_blank_physical_record_is_not_silently_discarded():
     with pytest.raises(ValueError, match="same number of fields"):
         analyze(b"value\n1\n\n2\n", "blank-row.csv", "present")
+
+
+def _workbook(rows, sheet_title="Data"):
+    import io
+
+    import openpyxl
+
+    workbook = openpyxl.Workbook()
+    workbook.active.title = sheet_title
+    for row in rows:
+        workbook.active.append(row)
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+    return buffer.getvalue()
+
+
+def test_missing_markers_count_literal_placeholders_as_missing():
+    content = b"name,qty\nA,1\nB,N/A\nC,-\nD,null\n"
+    assert analyze(content, "m.csv")["missing"] == 0
+    result = analyze(content, "m.csv", missing_markers=["n/a", " - ", "NULL"])
+    assert result["missing"] == 3
+    assert result["provenance"]["missing_markers"] == ["-", "n/a", "null"]
+    assert result["columns"][1]["type"] == "numeric"
+
+
+def test_missing_markers_are_validated():
+    with pytest.raises(ValueError, match="Missing markers"):
+        analyze(b"a\n1\n", "m.csv", missing_markers=["x"] * 21)
+    with pytest.raises(ValueError, match="Missing markers"):
+        analyze(b"a\n1\n", "m.csv", missing_markers=[""])
+
+
+def test_uneven_rows_are_located():
+    with pytest.raises(ValueError, match=r"expected 2, but row 3 has 3, row 4 has 1"):
+        analyze(b"a,b\n1,2\n3,4,5\n6\n", "uneven.csv")
+
+
+def test_xlsx_first_sheet_is_read_with_dates_and_numbers():
+    import datetime
+
+    content = _workbook(
+        [
+            ["order_date", "amount", "paid"],
+            [datetime.date(2024, 1, 5), 10.0, True],
+            [datetime.date(2024, 3, 9), 12.5, False],
+        ],
+        "Sales",
+    )
+    result = analyze(content, "book.xlsx")
+    assert result["rows"] == 2
+    assert [c["type"] for c in result["columns"]] == ["datetime", "numeric", "boolean"]
+    assert result["provenance"]["source_format"] == "xlsx"
+    assert result["provenance"]["sheet"] == "Sales"
+    assert result["provenance"]["delimiter"] is None
+    assert len(result["provenance"]["sha256"]) == 64
+
+
+def test_corrupt_xlsx_is_rejected():
+    with pytest.raises(ValueError, match="could not be read"):
+        analyze(b"PK\x03\x04not really a workbook", "bad.xlsx")
+
+
+def test_thai_national_id_is_validated_and_flagged_as_personal_data():
+    # 1101700230708 has a correct check digit; 1101700230706 does not.
+    result = analyze("เลขบัตรประชาชน,จังหวัด\n1101700230708,A\n1101700230706,B\n".encode(), "ids.csv")
+    column = result["columns"][0]
+    assert column["pattern"] == "thai_national_id"
+    assert column["type"] == "identifier"
+    assert column["invalid"] == 1
+    assert result["executive"]["status"] == "Action required"
+    assert any("personal data" in issue["title"] for issue in result["executive"]["issues"])
+
+
+def test_epoch_milliseconds_are_not_mistaken_for_national_ids():
+    result = analyze(b"ts\n1700000000000\n1700000100000\n1700000200000\n", "ts.csv")
+    assert result["columns"][0]["pattern"] is None
+
+
+def test_thai_phone_numbers_are_flagged_as_personal_data():
+    result = analyze(b"phone,v\n0812345678,1\n029876543,2\n", "phones.csv")
+    assert result["columns"][0]["pattern"] == "thai_phone"
+    assert result["executive"]["high_priority_count"] == 1
+
+
+def test_timeseries_counts_periods_and_gaps():
+    content = b"d\n2024-01-05\n2024-01-20\n2024-06-02\n2024-06-03\n"
+    series = analyze(content, "ts.csv")["timeseries"]
+    assert series["granularity"] == "month"
+    assert [point["count"] for point in series["points"]] == [2, 0, 0, 0, 0, 2]
+    assert series["gaps"] == 4
+    assert (series["first"], series["last"]) == ("2024-01-05", "2024-06-03")
+    assert analyze(b"x\n1\n", "n.csv")["timeseries"] is None
 
 
 def test_day_first_slash_and_buddhist_era_dates_are_validated():

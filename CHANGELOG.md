@@ -5,6 +5,12 @@
 - Accept real-world exports: UTF-8 (with or without BOM), UTF-16, and Thai Windows-874 files are decoded deterministically; comma, semicolon, tab, and pipe delimiters are detected instead of rejected.
 - Record the detected encoding and delimiter in the provenance record, on-screen strip, and executive brief.
 - Recognize and validate dates written YYYY-MM-DD, YYYY/MM/DD, DD/MM/YYYY (day first), with optional time, and Buddhist Era years (2400+, converted by subtracting 543).
+- Read Excel `.xlsx` workbooks (first sheet, cached values only; formulas, macros and external links are never evaluated; 50 MB decompressed cap).
+- Add user-defined missing markers (for example `NA`, `N/A`, `-`), recorded in provenance; default behavior is unchanged.
+- Report the exact rows with the wrong number of fields instead of a generic error.
+- Detect Thai national ID (13 digits with check-digit validation) and Thai phone columns; flag them as possible personal data (high priority, blocks approval) and count bad ID check digits as invalid.
+- Add a records-over-time chart with empty-period count for the first date column.
+- Add in-browser comparison of two files and browser-local rule templates (column names and thresholds only).
 - Recognize non-ASCII (for example Thai) header rows.
 
 ## 0.8.0 — No sign-in (2026-10-30)

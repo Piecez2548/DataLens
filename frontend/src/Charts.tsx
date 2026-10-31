@@ -12,6 +12,8 @@ import {
   Pie,
   Cell,
   Legend,
+  LineChart,
+  Line,
 } from "recharts";
 import type { Analysis, Column } from "./types";
 const colors = ["#5d62e8", "#35a99b", "#e0a748", "#d27b9b", "#7e99bb"];
@@ -106,6 +108,51 @@ export default function Charts({
           </table>
         </details>
       </section>
+      {data.timeseries && (
+        <section className="panel wide">
+          <div className="section-title">
+            <div>
+              <h3>Records over time</h3>
+              <p>
+                {data.timeseries.column} · by {data.timeseries.granularity} ·{" "}
+                {data.timeseries.first} to {data.timeseries.last} ·{" "}
+                {data.timeseries.gaps === 0
+                  ? "no empty periods"
+                  : `${data.timeseries.gaps} empty ${data.timeseries.granularity}(s)`}
+              </p>
+            </div>
+          </div>
+          <div className="chart" aria-hidden="true">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={data.timeseries.points}>
+                <CartesianGrid vertical={false} stroke="var(--border)" />
+                <XAxis dataKey="label" tick={{ fontSize: 12 }} interval="preserveStartEnd" />
+                <YAxis allowDecimals={false} width={40} />
+                <Tooltip
+                  contentStyle={{
+                    background: "var(--panel)",
+                    borderColor: "var(--border)",
+                    color: "var(--text)",
+                  }}
+                />
+                <Line type="monotone" dataKey="count" stroke="#6866ea" dot={data.timeseries.points.length < 40} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+          <details className="chart-data">
+            <summary>View records over time as a table</summary>
+            <table>
+              <thead><tr><th>Period</th><th>Records</th></tr></thead>
+              <tbody>
+                {data.timeseries.points.slice(0, 200).map((item) => (
+                  <tr key={item.label}><td>{item.label}</td><td>{item.count}</td></tr>
+                ))}
+              </tbody>
+            </table>
+            {data.timeseries.points.length > 200 && <p>Showing the first 200 of {data.timeseries.points.length} periods.</p>}
+          </details>
+        </section>
+      )}
       <section className="panel wide">
         <div className="section-title">
           <div>

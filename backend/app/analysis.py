@@ -7,14 +7,18 @@ import hashlib
 import io
 import re
 import unicodedata
+import zipfile
 from collections import Counter
 
 import numpy as np
+import openpyxl
 import pandas as pd
 
 MAX_BYTES = 10 * 1024 * 1024
 MAX_ROWS = 100_000
 MAX_COLUMNS = 100
+MAX_XLSX_UNCOMPRESSED = 50 * 1024 * 1024
+MAX_MISSING_MARKERS = 20
 ALLOWED_TYPES = {"numeric", "categorical", "datetime", "boolean", "email", "identifier"}
 EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
@@ -32,19 +36,136 @@ def _date_parts(value: str) -> tuple[int, int, int] | None:
     return None
 
 
-def _is_valid_date(value: str) -> bool:
-    """Validate the calendar date; Buddhist Era years (2400+) are converted by subtracting 543."""
+def _to_date(value: str) -> datetime.date | None:
+    """Calendar date for a date-shaped value; Buddhist Era years (2400+) are converted by subtracting 543."""
     parts = _date_parts(value)
     if parts is None:
-        return False
+        return None
     year, month, day = parts
     if year >= 2400:
         year -= 543
     try:
-        datetime.date(year, month, day)
+        return datetime.date(year, month, day)
     except ValueError:
+        return None
+
+
+def _is_valid_date(value: str) -> bool:
+    return _to_date(value) is not None
+
+
+THAI_ID_PATTERN = re.compile(r"\d{13}")
+THAI_PHONE_PATTERN = re.compile(r"0[2-9]\d{7,8}")
+THAI_ID_NAME_HINTS = ("national_id", "citizen", "id_card", "idcard", "thai_id", "เลขบัตร", "บัตรประชาชน")
+
+
+def _thai_id_valid(value: str) -> bool:
+    """Thai national ID check digit: (11 - sum(d_i * (13 - i)) mod 11) mod 10."""
+    if not THAI_ID_PATTERN.fullmatch(value) or value[0] == "0":
         return False
-    return True
+    total = sum(int(digit) * (13 - index) for index, digit in enumerate(value[:12]))
+    return (11 - total % 11) % 10 == int(value[12])
+
+
+def _detect_personal_pattern(name: str, values: pd.Series) -> str | None:
+    """Flag columns that look like Thai national IDs or phone numbers (personal data)."""
+    if not len(values):
+        return None
+    lowered = name.lower()
+    compact = values.str.replace(r"[\s-]", "", regex=True)
+    id_shaped = compact.map(lambda value: bool(THAI_ID_PATTERN.fullmatch(value)))
+    if id_shaped.mean() >= 0.8:
+        valid_share = compact[id_shaped].map(_thai_id_valid).mean()
+        if valid_share >= 0.5 or any(hint in lowered for hint in THAI_ID_NAME_HINTS):
+            return "thai_national_id"
+    if compact.map(lambda value: bool(THAI_PHONE_PATTERN.fullmatch(value))).mean() >= 0.8:
+        return "thai_phone"
+    return None
+
+
+def _timeseries(column: str, values: pd.Series) -> dict | None:
+    """Row counts per day, month or year for one date column, with empty periods counted as gaps."""
+    parsed = [parsed_date for parsed_date in (_to_date(value) for value in values) if parsed_date]
+    if not parsed:
+        return None
+    first, last = min(parsed), max(parsed)
+    span = (last - first).days
+    if span <= 92:
+        granularity, key = "day", lambda d: d.isoformat()
+        labels = [(first + datetime.timedelta(days=offset)).isoformat() for offset in range(span + 1)]
+    elif span <= 3650:
+        granularity, key = "month", lambda d: f"{d.year:04d}-{d.month:02d}"
+        labels = []
+        year, month = first.year, first.month
+        while (year, month) <= (last.year, last.month):
+            labels.append(f"{year:04d}-{month:02d}")
+            year, month = (year + 1, 1) if month == 12 else (year, month + 1)
+    else:
+        granularity, key = "year", lambda d: f"{d.year:04d}"
+        labels = [f"{year:04d}" for year in range(first.year, last.year + 1)]
+    counts = Counter(key(d) for d in parsed)
+    points = [{"label": label, "count": counts.get(label, 0)} for label in labels]
+    return {
+        "column": column,
+        "granularity": granularity,
+        "first": first.isoformat(),
+        "last": last.isoformat(),
+        "gaps": sum(point["count"] == 0 for point in points),
+        "points": points,
+    }
+
+
+def _xlsx_to_csv_text(content: bytes) -> tuple[str, str]:
+    """Read cached values of the first worksheet. Formulas, macros and external links are never evaluated."""
+    try:
+        with zipfile.ZipFile(io.BytesIO(content)) as archive:
+            if sum(info.file_size for info in archive.infolist()) > MAX_XLSX_UNCOMPRESSED:
+                raise ValueError("The workbook is too large after decompression.")
+        workbook = openpyxl.load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+    except (zipfile.BadZipFile, KeyError, OSError) as exc:
+        raise ValueError("The Excel workbook could not be read.") from exc
+    except ValueError:
+        raise
+    except Exception as exc:  # openpyxl raises several unrelated types for corrupt workbooks
+        raise ValueError("The Excel workbook could not be read.") from exc
+    try:
+        sheet = workbook.worksheets[0]
+        rows = []
+        for row in sheet.iter_rows(values_only=True):
+            cells = [_xlsx_cell(cell) for cell in row]
+            while cells and cells[-1] == "":
+                cells.pop()
+            rows.append(cells)
+            if len(rows) > MAX_ROWS + 2:
+                raise ValueError("Maximum 100,000 rows supported.")
+        while rows and not rows[-1]:
+            rows.pop()
+        width = max((len(row) for row in rows), default=0)
+        if not width:
+            raise ValueError("The first worksheet is empty.")
+        if width > MAX_COLUMNS:
+            raise ValueError("Maximum 100 columns supported.")
+        buffer = io.StringIO()
+        writer = csv.writer(buffer, lineterminator="\n")
+        for row in rows:
+            writer.writerow(row + [""] * (width - len(row)))
+        return buffer.getvalue(), sheet.title
+    finally:
+        workbook.close()
+
+
+def _xlsx_cell(value) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, datetime.datetime):
+        return value.date().isoformat() if value.time() == datetime.time() else value.isoformat()
+    if isinstance(value, datetime.date):
+        return value.isoformat()
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value)
 
 
 DELIMITERS = {",": "comma", ";": "semicolon", "	": "tab", "|": "pipe"}
@@ -140,6 +261,7 @@ def _executive_summary(
     correlations: list[dict],
     embedded_delimiters: list[str],
     business_rule_violations: int,
+    personal_data: list[str],
 ) -> dict:
     issues = []
     if not header_detected:
@@ -216,6 +338,15 @@ def _executive_summary(
                 "recommendation": "Resolve each violation or document an approved exception before executive use.",
             }
         )
+    if personal_data:
+        issues.append(
+            {
+                "severity": "high",
+                "title": "Possible personal data detected",
+                "detail": f"Thai national ID or phone number patterns were found in: {', '.join(personal_data[:3])}.",
+                "recommendation": "Remove or mask these columns, or confirm a lawful basis and approved handling before sharing.",
+            }
+        )
     high = sum(item["severity"] == "high" for item in issues)
     if high:
         status, message = "Action required", "Resolve high-impact data risks before executive reporting."
@@ -247,13 +378,28 @@ def analyze(
     column_names: list[str] | None = None,
     type_overrides: dict[str, str] | None = None,
     business_rules: dict[str, dict] | None = None,
+    missing_markers: list[str] | None = None,
 ) -> dict:
     if len(content) > MAX_BYTES:
         raise ValueError("CSV exceeds the 10 MB limit.")
-    text, encoding = _decode(content)
-    if "\x00" in text:
-        raise ValueError("The file contains binary data.")
-    delimiter = _detect_delimiter(text)
+    sheet_name = None
+    if content.startswith(b"PK\x03\x04"):
+        text, sheet_name = _xlsx_to_csv_text(content)
+        encoding, delimiter, source_format = "xlsx", ",", "xlsx"
+    else:
+        text, encoding = _decode(content)
+        if "\x00" in text:
+            raise ValueError("The file contains binary data.")
+        delimiter = _detect_delimiter(text)
+        source_format = "csv"
+    markers = missing_markers or []
+    if (
+        not isinstance(markers, list)
+        or len(markers) > MAX_MISSING_MARKERS
+        or not all(isinstance(item, str) and 0 < len(item.strip()) <= 30 for item in markers)
+    ):
+        raise ValueError("Missing markers must be a list of at most 20 short text values.")
+    marker_set = {item.strip().lower() for item in markers}
     if header_mode not in {"auto", "present", "absent"}:
         raise ValueError("header_mode must be auto, present, or absent.")
     try:
@@ -264,8 +410,13 @@ def analyze(
         width = len(all_rows[0])
         if width > MAX_COLUMNS:
             raise ValueError("Maximum 100 columns supported.")
-        if any(len(row) != width for row in all_rows):
-            raise ValueError("Every row must have the same number of fields.")
+        uneven = [(index + 1, len(row)) for index, row in enumerate(all_rows) if len(row) != width]
+        if uneven:
+            examples = ", ".join(f"row {number} has {count}" for number, count in uneven[:5])
+            more = f" (+{len(uneven) - 5} more)" if len(uneven) > 5 else ""
+            raise ValueError(
+                f"Every row must have the same number of fields: expected {width}, but {examples}{more}."
+            )
         detected_header = _detect_header(text, delimiter)
         use_header = detected_header if header_mode == "auto" else header_mode == "present"
         if use_header:
@@ -294,6 +445,8 @@ def analyze(
         raise ValueError("The CSV must contain at least one data row.")
     frame = pd.DataFrame(rows, columns=headers)
     normalized = frame.apply(lambda col: col.str.strip().replace("", None))
+    if marker_set:
+        normalized = normalized.apply(lambda col: col.where(~col.str.lower().isin(marker_set), None))
     n = len(frame)
     type_overrides = type_overrides or {}
     if not isinstance(type_overrides, dict) or not all(
@@ -304,7 +457,7 @@ def analyze(
     invalid_override_types = set(type_overrides.values()) - ALLOWED_TYPES
     if unknown_overrides or invalid_override_types:
         raise ValueError("Schema overrides contain an unknown column or type.")
-    columns, numeric = [], {}
+    columns, numeric, personal_data = [], {}, []
     mismatches = invalid = checked = 0
     for name in headers:
         values = normalized[name].dropna()
@@ -328,6 +481,11 @@ def analyze(
             inferred = "email"
         if normalized_name in {"id", "customer_id", "record_id", "user_id"} or normalized_name.endswith("_id"):
             inferred = "identifier"
+        pattern = _detect_personal_pattern(name, values)
+        if pattern and name not in type_overrides:
+            inferred = "identifier"
+        if pattern:
+            personal_data.append(name)
         dtype = type_overrides.get(name, inferred)
         if dtype == "email" or dtype == "identifier":
             mismatch = 0
@@ -361,7 +519,9 @@ def analyze(
             bad = int((~matched.map(_is_valid_date)).sum())
         elif dtype == "email":
             bad = int((~matched.map(lambda value: bool(EMAIL_PATTERN.fullmatch(value)))).sum())
-        if dtype in {"numeric", "datetime", "boolean", "email"}:
+        elif pattern == "thai_national_id":
+            bad = int((~matched.str.replace(r"[\s-]", "", regex=True).map(_thai_id_valid)).sum())
+        if dtype in {"numeric", "datetime", "boolean", "email"} or pattern == "thai_national_id":
             checked += len(matched)
             invalid += bad
         mismatches += mismatch
@@ -375,6 +535,7 @@ def analyze(
                 "invalid": bad,
                 "outliers": 0,
                 "inferred_type": inferred,
+                "pattern": pattern,
                 "type_overridden": name in type_overrides,
                 "stats": stats,
                 "histogram": histogram,
@@ -484,6 +645,7 @@ def analyze(
         correlations=correlations,
         embedded_delimiters=embedded_delimiters,
         business_rule_violations=business_rule_violations,
+        personal_data=personal_data,
     )
     numeric_names = list(numeric)
     scatter = []
@@ -510,6 +672,15 @@ def analyze(
         "executive": executive,
         "columns": columns,
         "preview": normalized.head(100).where(normalized.head(100).notna(), None).to_dict("records"),
+        "timeseries": next(
+            (
+                series
+                for column in columns
+                if column["type"] == "datetime"
+                and (series := _timeseries(column["name"], normalized[column["name"]].dropna()))
+            ),
+            None,
+        ),
         "scatter": scatter,
         "scatter_axes": scatter_axes,
         "correlations": correlations[:10],
@@ -527,8 +698,11 @@ def analyze(
             "analyzed_rows": n,
             "preview_rows": min(n, 100),
             "method_version": "0.7.1",
+            "source_format": source_format,
+            "sheet": sheet_name,
             "encoding": encoding,
-            "delimiter": DELIMITERS[delimiter],
+            "delimiter": DELIMITERS[delimiter] if source_format == "csv" else None,
+            "missing_markers": sorted(marker_set),
             "calculation_mode": "deterministic",
             "data_values_generated": False,
         },

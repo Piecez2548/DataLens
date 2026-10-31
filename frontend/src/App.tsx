@@ -22,9 +22,14 @@ import {
 } from "./Governance";
 import { downloadExecutiveReport } from "./report";
 import ChartBoundary from "./ChartBoundary";
+import Compare from "./Compare";
 const Charts = lazy(() => import("./Charts"));
 const MAX_UPLOAD_MB = import.meta.env.PROD ? 4 : 10;
-const tabs = ["Overview", "Data quality", "Explore", "Data preview"] as const;
+const baseTabs = ["Overview", "Data quality", "Explore", "Data preview"] as const;
+type Tab = (typeof baseTabs)[number] | "Compare";
+const MARKER_PRESET = ["NA", "N/A", "null", "none", "nan", "-", "?"];
+const parseMarkers = (text: string) =>
+  Array.from(new Set(text.split(",").map((item) => item.trim()).filter(Boolean)));
 const schemaTypes = [
   "auto",
   "identifier",
@@ -45,7 +50,7 @@ const fmt = (n: number) =>
 
 export default function App() {
   const [data, setData] = useState<Analysis | null>(null);
-  const [tab, setTab] = useState<(typeof tabs)[number]>("Overview");
+  const [tab, setTab] = useState<Tab>("Overview");
   const [selected, setSelected] = useState("");
   const [busy, setBusy] = useState(false);
   const [slow, setSlow] = useState(false);
@@ -76,6 +81,9 @@ export default function App() {
     Record<string, BusinessRule>
   >({});
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
+  const [markerText, setMarkerText] = useState("");
+  const [other, setOther] = useState<Analysis | null>(null);
+  const compareInput = useRef<HTMLInputElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const uploadTrigger = useRef<HTMLButtonElement>(null);
   const governanceReady = Boolean(
@@ -86,6 +94,70 @@ export default function App() {
       (governance.classification !== "public" ||
         (governance.source_url.startsWith("https://") && governance.verified_at)),
   );
+  async function requestAnalysis(
+    file: File,
+    headerMode: "auto" | "present" | "absent",
+    schema?: {
+      column_names?: string[];
+      type_overrides?: Record<string, string>;
+      business_rules?: Record<string, BusinessRule>;
+      missing_markers?: string[];
+    },
+  ): Promise<Analysis> {
+    const body = new FormData();
+    body.append("file", file);
+    body.append(
+      "schema",
+      JSON.stringify({
+        ...schema,
+        governance: { ...governance, authorized_to_process: authorized },
+        business_rules: schema?.business_rules ?? businessRules,
+        missing_markers: schema?.missing_markers ?? parseMarkers(markerText),
+      }),
+    );
+    const response = await fetch(`/api/analyze?header_mode=${headerMode}`, {
+      method: "POST",
+      body,
+    });
+    if (!response.ok) {
+      const e = await response.json().catch(() => ({
+        detail:
+          response.status === 413
+            ? "This file exceeds the hosting upload limit."
+            : "Analysis is temporarily unavailable. Please try again.",
+      }));
+      throw new Error(
+        typeof e.detail === "string" ? e.detail : "Could not analyze this file.",
+      );
+    }
+    return response.json();
+  }
+  const validFile = (file: File) =>
+    /\.(csv|xlsx)$/i.test(file.name) && file.size <= MAX_UPLOAD_MB * 1024 * 1024;
+  async function compareWith(file: File) {
+    if (busy || !data) return;
+    if (!validFile(file)) {
+      setError(`Choose a CSV or XLSX file no larger than ${MAX_UPLOAD_MB} MB.`);
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      setOther(await requestAnalysis(file, "auto"));
+      setTab("Compare");
+    } catch (e) {
+      setError(
+        e instanceof TypeError
+          ? "Cannot reach the analysis service. Please try again in a moment."
+          : e instanceof Error
+            ? e.message
+            : "Comparison failed. Please try again.",
+      );
+    } finally {
+      setBusy(false);
+      if (compareInput.current) compareInput.current.value = "";
+    }
+  }
   async function upload(
     file: File,
     headerMode: "auto" | "present" | "absent" = "auto",
@@ -93,6 +165,7 @@ export default function App() {
       column_names?: string[];
       type_overrides?: Record<string, string>;
       business_rules?: Record<string, BusinessRule>;
+      missing_markers?: string[];
     },
   ) {
     if (busy) return;
@@ -100,44 +173,14 @@ export default function App() {
       setError("Confirm that you are allowed to upload this file before analysis.");
       return;
     }
-    if (
-      !file.name.toLowerCase().endsWith(".csv") ||
-      file.size > MAX_UPLOAD_MB * 1024 * 1024
-    ) {
-      setError(`Choose a CSV file no larger than ${MAX_UPLOAD_MB} MB.`);
+    if (!validFile(file)) {
+      setError(`Choose a CSV or XLSX file no larger than ${MAX_UPLOAD_MB} MB.`);
       return;
     }
     setBusy(true);
     setError("");
     try {
-      const body = new FormData();
-      body.append("file", file);
-      body.append(
-        "schema",
-        JSON.stringify({
-          ...schema,
-          governance: { ...governance, authorized_to_process: authorized },
-          business_rules: schema?.business_rules ?? businessRules,
-        }),
-      );
-      const response = await fetch(`/api/analyze?header_mode=${headerMode}`, {
-        method: "POST",
-        body,
-      });
-      if (!response.ok) {
-        const e = await response.json().catch(() => ({
-          detail:
-            response.status === 413
-              ? "This file exceeds the hosting upload limit."
-              : "Analysis is temporarily unavailable. Please try again.",
-        }));
-        throw new Error(
-          typeof e.detail === "string"
-            ? e.detail
-            : "Could not analyze this CSV.",
-        );
-      }
-      const result: Analysis = await response.json();
+      const result = await requestAnalysis(file, headerMode, schema);
       setData(result);
       setAuditEvents([result.audit_event]);
       setLastFile(file);
@@ -201,6 +244,8 @@ export default function App() {
   }
   function clearDataset() {
     setData(null);
+    setOther(null);
+    setMarkerText("");
     setLastFile(null);
     setColumnNames([]);
     setColumnTypes([]);
@@ -300,18 +345,29 @@ export default function App() {
               onClick={() => input.current?.click()}
             >
               <Upload size={17} />
-              {busy ? "Analyzing…" : "Upload CSV"}
+              {busy ? "Analyzing…" : "Upload file"}
             </button>
           </div>
           <input
             ref={input}
             type="file"
-            accept=".csv,text/csv"
+            accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             className="sr-only"
             aria-label="Upload CSV file"
             onChange={(e) => {
               const f = e.target.files?.[0];
               if (f) void upload(f);
+            }}
+          />
+          <input
+            ref={compareInput}
+            type="file"
+            accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            className="sr-only"
+            aria-label="Choose a file to compare"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void compareWith(f);
             }}
           />
           {error && (
@@ -349,7 +405,7 @@ export default function App() {
                 <FileSpreadsheet size={34} />
               </div>
               <h2>Your next discovery starts here</h2>
-              <p>Drop a CSV file here to explore its quality and structure.</p>
+              <p>Drop a CSV or Excel (.xlsx) file here to explore its quality and structure.</p>
               <p>
                 Current release: use synthetic or confirmed non-personal data only.
                 CSV bytes are sent to the analysis service and may be handled transiently
@@ -372,7 +428,7 @@ export default function App() {
                 <ArrowUpRight size={17} />
               </button>
               <small>
-                CSV (UTF-8, Thai Windows-874, UTF-16; comma, semicolon, tab or pipe) · up to {MAX_UPLOAD_MB} MB · 100,000 rows · 100
+                CSV (UTF-8, Thai Windows-874, UTF-16; comma, semicolon, tab or pipe) or Excel .xlsx (first sheet) · up to {MAX_UPLOAD_MB} MB · 100,000 rows · 100
                 columns
               </small>
             </section>
@@ -394,6 +450,13 @@ export default function App() {
                   </button>
                   <button
                     className="report-button"
+                    disabled={busy}
+                    onClick={() => compareInput.current?.click()}
+                  >
+                    <FileSpreadsheet size={15} /> Compare with another file
+                  </button>
+                  <button
+                    className="report-button"
                     onClick={() => downloadExecutiveReport(data, auditEvents)}
                   >
                     <Download size={15} /> {approved ? "Export approved brief" : "Export draft profile"}
@@ -412,12 +475,15 @@ export default function App() {
                 <small>
                   SHA-256 {data.provenance.sha256.slice(0, 12)}… · Method v
                   {data.provenance.method_version} ·{" "}
-                  {data.provenance.encoding} · {data.provenance.delimiter} ·{" "}
+                  {data.provenance.source_format === "xlsx"
+                    ? `Excel sheet “${data.provenance.sheet}”`
+                    : `${data.provenance.encoding} · ${data.provenance.delimiter}`}{" "}
+                  ·{" "}
                   {fmt(data.provenance.input_bytes)} bytes
                 </small>
               </div>
               <nav className="tabs" aria-label="Dataset views">
-                {tabs.map((t) => (
+                {(other ? [...baseTabs, "Compare" as const] : [...baseTabs]).map((t) => (
                   <button
                     key={t}
                     aria-current={tab === t ? "page" : undefined}
@@ -461,6 +527,8 @@ export default function App() {
                       data={data}
                       names={columnNames}
                       types={columnTypes}
+                      markers={markerText}
+                      onMarkers={setMarkerText}
                       busy={busy}
                       onName={(index, value) =>
                         setColumnNames(
@@ -490,6 +558,7 @@ export default function App() {
                           {
                             column_names: columnNames,
                             type_overrides: overrides,
+                            missing_markers: parseMarkers(markerText),
                           },
                         );
                       }}
@@ -590,6 +659,7 @@ export default function App() {
                     onRule={(name, rule) =>
                       setBusinessRules((rules) => ({ ...rules, [name]: rule }))
                     }
+                    onLoadRules={setBusinessRules}
                     onApplyRules={() => {
                       if (!lastFile) return;
                       const overrides = Object.fromEntries(
@@ -614,6 +684,9 @@ export default function App() {
                     }
                   />
                 </>
+              )}
+              {tab === "Compare" && other && (
+                <Compare base={data} other={other} onClose={() => { setOther(null); setTab("Overview"); }} />
               )}
               {tab === "Data quality" && (
                 <>
@@ -647,6 +720,11 @@ export default function App() {
                               <td>{c.name}</td>
                               <td>
                                 <span className="badge">{c.type}</span>
+                                {c.pattern && (
+                                  <span className="badge">
+                                    {c.pattern === "thai_national_id" ? "Thai ID (personal data)" : "Thai phone (personal data)"}
+                                  </span>
+                                )}
                               </td>
                               <td>{c.missing}</td>
                               <td>{c.mismatches}</td>
@@ -768,6 +846,8 @@ function SchemaSetup({
   data,
   names,
   types,
+  markers,
+  onMarkers,
   busy,
   onName,
   onType,
@@ -776,6 +856,8 @@ function SchemaSetup({
   data: Analysis;
   names: string[];
   types: string[];
+  markers: string;
+  onMarkers: (value: string) => void;
   busy: boolean;
   onName: (index: number, value: string) => void;
   onType: (index: number, value: string) => void;
@@ -823,6 +905,24 @@ function SchemaSetup({
             </select>
           </div>
         ))}
+      </div>
+      <div className="marker-setup">
+        <label htmlFor="missing-markers">
+          Treat these values as missing (comma-separated)
+        </label>
+        <input
+          id="missing-markers"
+          value={markers}
+          onChange={(event) => onMarkers(event.target.value)}
+          placeholder="For example, NA, N/A, null, -"
+        />
+        <button type="button" onClick={() => onMarkers(MARKER_PRESET.join(", "))}>
+          Use common markers
+        </button>
+        <small>
+          Matching ignores case. Without markers only empty cells count as
+          missing.
+        </small>
       </div>
       {invalid && (
         <p role="alert" className="schema-error">

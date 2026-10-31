@@ -56,8 +56,8 @@ async def upload(
     schema_config_json: str | None = Form(None, alias="schema"),
 ):
     try:
-        if not (file.filename or "").lower().endswith(".csv"):
-            raise HTTPException(400, "Please upload a .csv file.")
+        if not (file.filename or "").lower().endswith((".csv", ".xlsx")):
+            raise HTTPException(400, "Please upload a .csv or .xlsx file.")
         content = await file.read(UPLOAD_LIMIT + 1)
         if len(content) > UPLOAD_LIMIT:
             raise HTTPException(413, f"CSV exceeds the {UPLOAD_LIMIT // (1024 * 1024)} MB limit.")
@@ -101,6 +101,7 @@ async def upload(
             schema_config.get("column_names"),
             schema_config.get("type_overrides"),
             schema_config.get("business_rules"),
+            schema_config.get("missing_markers"),
         )
         analysis_id = hashlib.sha256(
             f"{result['provenance']['sha256']}:{json.dumps(schema_config, sort_keys=True)}:{app.version}".encode()

@@ -111,3 +111,44 @@ test("has no sign-in step and lets anyone review and approve a clean dataset", a
   await expect(page.getByText(/3 event\(s\).*analysis.approved/)).toBeVisible();
   await expect(page.getByRole("button", { name: "Export approved brief" })).toBeVisible();
 });
+test("compares two files in one session", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel(/I am allowed to analyze this file/).check();
+  await page
+    .getByLabel("Upload CSV file")
+    .setInputFiles(path.resolve("../samples/demo.csv"));
+  await expect(page.getByText("164 rows · 6 columns")).toBeVisible();
+
+  await page.getByLabel("Choose a file to compare").setInputFiles({
+    name: "next.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from("name;amount;when\nA;10;31/12/2024\nB;N/A;01/01/2025\n"),
+  });
+  await expect(page.getByRole("heading", { name: "Compare files" })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "Rows", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Close comparison" }).click();
+  await expect(page.getByRole("button", { name: "Compare" , exact: true })).toHaveCount(0);
+});
+
+test("applies missing markers and saves a rule template", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel(/I am allowed to analyze this file/).check();
+  await page.getByLabel("Upload CSV file").setInputFiles({
+    name: "gaps.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from("name,amount\nA,10\nB,N/A\nC,-\nD,20\n"),
+  });
+  await expect(page.getByText("4 rows · 2 columns")).toBeVisible();
+  await page.getByText("Dataset setup", { exact: true }).click();
+  await page.getByLabel(/Treat these values as missing/).fill("N/A, -");
+  await page.getByRole("button", { name: "Apply dataset setup" }).click();
+  await expect(page.getByText("2 missing cells need review")).toBeVisible();
+
+  await page.getByText("Advanced checks and approval").click();
+  await page.getByText("Set business rules", { exact: true }).click();
+  const rule = page.locator(".rule-row").filter({ hasText: "amount" });
+  await rule.getByLabel("Minimum").fill("0");
+  await page.getByLabel("Template name").fill("Amounts");
+  await page.getByRole("button", { name: "Save current rules" }).click();
+  await expect(page.getByText(/Saved “Amounts”/)).toBeVisible();
+});

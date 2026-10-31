@@ -7,6 +7,7 @@ export interface Column {
   invalid: number;
   outliers: number;
   inferred_type: string;
+  pattern: "thai_national_id" | "thai_phone" | null;
   type_overridden: boolean;
   stats: Record<string, number> | null;
   histogram: { label: string; count: number }[];
@@ -43,6 +44,14 @@ export interface Analysis {
   };
   columns: Column[];
   preview: Record<string, string | null>[];
+  timeseries: {
+    column: string;
+    granularity: "day" | "month" | "year";
+    first: string;
+    last: string;
+    gaps: number;
+    points: { label: string; count: number }[];
+  } | null;
   scatter: { x: number; y: number }[];
   scatter_axes: string[];
   correlations: { left: string; right: string; coefficient: number }[];
@@ -74,8 +83,11 @@ export interface Analysis {
     analyzed_rows: number;
     preview_rows: number;
     method_version: string;
+    source_format: "csv" | "xlsx";
+    sheet: string | null;
     encoding: string;
-    delimiter: string;
+    delimiter: string | null;
+    missing_markers: string[];
     calculation_mode: "deterministic";
     data_values_generated: false;
   };
