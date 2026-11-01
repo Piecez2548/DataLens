@@ -1,5 +1,8 @@
 # Data governance
 
+> Historical document: it describes earlier versions that had sign-in and an approval workflow. Both were removed; see CHANGELOG.md.
+
+
 Users must attest that they are authorized and that the file is synthetic or confirmed non-personal before upload. Before final approval, they must record the accountable owner, classification, official HTTPS source where required, date checked by the owner, decision purpose, and authorization. These are declarations by the user; DataLens records them in signed event evidence but cannot independently certify them.
 
 | Classification | Current policy |

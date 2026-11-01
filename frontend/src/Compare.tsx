@@ -1,4 +1,4 @@
-import { t } from "./i18n";
+import { t, tStatus } from "./i18n";
 import type { Analysis } from "./types";
 import { issueKindLabels } from "./issueExport";
 
@@ -81,7 +81,7 @@ export default function Compare({
       </div>
       <h3>{t("Issue resolution")}</h3>
       <p className="muted">
-        Status: {base.executive.status} → {other.executive.status}. Counts are
+        Status: {tStatus(base.executive.status)} → {tStatus(other.executive.status)}. Counts are
         exact totals for each issue type, so a lower number after your fixes
         means issues were resolved.
       </p>

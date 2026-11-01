@@ -78,6 +78,11 @@ const th: Record<string, string> = {
   "Overall score": "คะแนนรวม",
   "Equal-weight mean of available dimensions.": "ค่าเฉลี่ยถ่วงน้ำหนักเท่ากันของมิติที่มี",
   Overview: "ภาพรวม",
+  "Business rules": "กฎทางธุรกิจ",
+  "Check that values follow your own rules before sending.": "ตรวจว่าค่าต่าง ๆ เป็นไปตามกฎของคุณก่อนส่ง",
+  "Export summary for sharing": "ส่งออกสรุปเพื่อส่งต่อ",
+  "Data check summary": "สรุปผลตรวจข้อมูล",
+  "DATA CHECK": "ผลตรวจข้อมูล",
   "CSV, Excel (.xlsx) or JSON · up to {mb} MB · 100,000 rows · 100 columns": "CSV, Excel (.xlsx) หรือ JSON · ไม่เกิน {mb} MB · 100,000 แถว · 100 คอลัมน์",
   "Tick the box above to enable the buttons.": "ติ๊กช่องด้านบนก่อนจึงจะกดปุ่มได้",
   "Follow-up for this issue type": "การติดตามสำหรับปัญหาประเภทนี้",
@@ -366,6 +371,21 @@ export function tf(text: string, values: Record<string, string | number>): strin
     (result, [key, value]) => result.replaceAll(`{${key}}`, String(value)),
     t(text),
   );
+}
+
+const statusEn: Record<string, string> = {
+  "Ready for exploration": "Ready to send",
+  "Review needed": "Check before sending",
+  "Action required": "Fix before sending",
+};
+const statusTh: Record<string, string> = {
+  "Ready for exploration": "พร้อมส่ง",
+  "Review needed": "ตรวจก่อนส่ง",
+  "Action required": "ต้องแก้ก่อนส่ง",
+};
+/** Verdict wording for the canonical status the server returns. */
+export function tStatus(status: string): string {
+  return (current === "th" ? statusTh : statusEn)[status] ?? status;
 }
 
 export function t(text: string): string {

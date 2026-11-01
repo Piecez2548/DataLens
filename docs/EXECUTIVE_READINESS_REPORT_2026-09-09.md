@@ -1,5 +1,8 @@
 # DataLens v0.7.0 executive readiness report
 
+> Historical document: it describes earlier versions that had sign-in and an approval workflow. Both were removed; see CHANGELOG.md.
+
+
 Date: 2026-09-09  
 Scope: DataLens application, production deployment, and Nexus project-link integration.
 

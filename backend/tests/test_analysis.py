@@ -181,7 +181,7 @@ def test_iqr_flags_minority_values_when_middle_half_is_constant():
     assert result["columns"][0]["outliers"] == 1
 
 
-def test_business_rules_are_auditable_and_block_executive_readiness():
+def test_business_rules_block_readiness():
     result = analyze(
         b"region,amount\nTH,10\nUS,200\n,50\n",
         "rules.csv",
@@ -195,18 +195,13 @@ def test_business_rules_are_auditable_and_block_executive_readiness():
     assert result["executive"]["status"] == "Action required"
 
 
-def test_analysis_needs_no_account_and_events_carry_no_identity(monkeypatch):
-    monkeypatch.setenv("DATALENS_AUDIT_SECRET", "test-only-secret")
-    schema = json.dumps({"governance": {"authorized_to_process": True}})
-    response = TestClient(app).post(
-        "/api/analyze",
-        files={"file": ("demo.csv", b"x\n1\n"), "schema": (None, schema)},
-    )
+def test_analysis_needs_no_account_and_nothing_is_cached():
+    response = TestClient(app).post("/api/analyze", files={"file": ("demo.csv", b"x\n1\n")})
     body = response.json()
     assert response.status_code == 200
     assert response.headers["cache-control"] == "no-store, max-age=0"
-    assert not any(key.startswith("actor") for key in body["governance"])
-    assert not any(key.startswith("actor") for key in body["audit_event"])
+    assert "governance" not in body
+    assert "audit_event" not in body
 
 
 def test_health_reports_no_authentication_requirement():
@@ -215,83 +210,21 @@ def test_health_reports_no_authentication_requirement():
 
 def test_hosted_analysis_requires_the_non_personal_data_attestation(monkeypatch):
     monkeypatch.setenv("VERCEL", "1")
-    monkeypatch.setenv("DATALENS_AUDIT_SECRET", "test-only-secret")
     client = TestClient(app)
     refused = client.post("/api/analyze", files={"file": ("demo.csv", b"x\n1\n")})
     assert refused.status_code == 400
-    schema = json.dumps({"governance": {"authorized_to_process": True}})
+    schema = json.dumps({"authorized_to_process": True})
     accepted = client.post("/api/analyze", files={"file": ("demo.csv", b"x\n1\n"), "schema": (None, schema)})
     assert accepted.status_code == 200
-
-
-def test_hosted_deployment_fails_closed_without_an_audit_secret(monkeypatch):
-    monkeypatch.setenv("VERCEL", "1")
-    monkeypatch.delenv("DATALENS_AUDIT_SECRET", raising=False)
-    schema = json.dumps({"governance": {"authorized_to_process": True}})
-    response = TestClient(app).post(
+    invalid = client.post(
         "/api/analyze",
-        files={"file": ("demo.csv", b"x\n1\n"), "schema": (None, schema)},
+        files={"file": ("demo.csv", b"x\n1\n"), "schema": (None, json.dumps({"authorized_to_process": "yes"}))},
     )
-    assert response.status_code == 503
+    assert invalid.status_code == 400
 
 
-def test_review_and_approval_require_bound_signed_evidence():
-    client = TestClient(app)
-    schema = json.dumps(
-        {
-            "governance": {
-                "owner": "Finance",
-                "purpose": "Monthly review",
-                "classification": "internal",
-                "authorized_to_process": True,
-            },
-            "business_rules": {"amount": {"min": 0}},
-        }
-    )
-    analysis = client.post(
-        "/api/analyze?header_mode=present",
-        files={"file": ("demo.csv", b"amount\n10\n"), "schema": (None, schema)},
-    ).json()
-    payload = {
-        "analysis_id": analysis["governance"]["analysis_id"],
-        "analysis_event": analysis["audit_event"],
-        "note": "Evidence checked",
-    }
-    reviewed = client.post("/api/audit/review", json=payload)
-    approved = client.post("/api/audit/approve", json={**payload, "review_event": reviewed.json()})
-    assert reviewed.status_code == 200
-    assert approved.status_code == 200
-    assert reviewed.json()["signature_algorithm"] == "HMAC-SHA256"
-    assert approved.json()["action"] == "analysis.approved"
-
-
-def test_audit_rejects_fabricated_or_tampered_analysis_evidence():
-    client = TestClient(app)
-    fabricated = {
-        "analysis_id": "a" * 64,
-        "analysis_event": {
-            "action": "analysis.completed",
-            "analysis_id": "a" * 64,
-            "signature": "0" * 64,
-            "signature_algorithm": "HMAC-SHA256",
-        },
-    }
-    assert client.post("/api/audit/review", json=fabricated).status_code == 400
-
-
-def test_approval_rejects_incomplete_analysis_even_with_valid_service_event():
-    client = TestClient(app)
-    analysis = client.post(
-        "/api/analyze?header_mode=present",
-        files={"file": ("demo.csv", b"amount\n10\n")},
-    ).json()
-    payload = {
-        "analysis_id": analysis["governance"]["analysis_id"],
-        "analysis_event": analysis["audit_event"],
-    }
-    review = client.post("/api/audit/review", json=payload).json()
-    response = client.post("/api/audit/approve", json={**payload, "review_event": review})
-    assert response.status_code == 409
+def test_approval_endpoints_no_longer_exist():
+    assert TestClient(app).post("/api/audit/review", json={}).status_code in {404, 405}
 
 
 def test_numeric_business_rule_rejects_a_text_column():
@@ -712,3 +645,12 @@ def test_year_era_must_be_known():
 
     with pytest.raises(ValueError):
         analyze(b"a,b\n1,2\n", "d.csv", year_era="xx")
+
+
+def test_excel_date_serials_in_a_plain_number_column_are_flagged():
+    lines = ["order,due_date,amount"] + [f"{i},{45366 + i},{i * 10}" for i in range(1, 6)]
+    result = analyze(chr(10).join(lines).encode(), "serial.csv")
+    titles = [item["title"] for item in result["executive"]["issues"]]
+    assert "Numbers that look like Excel dates" in titles
+    plain = analyze(chr(10).join(["order,amount"] + [f"{i},{45366 + i}" for i in range(1, 6)]).encode(), "plain.csv")
+    assert "Numbers that look like Excel dates" not in [item["title"] for item in plain["executive"]["issues"]]

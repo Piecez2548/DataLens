@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import path from "node:path";
 
-test("analyzes a real CSV with governance, rules, and signed review", async ({
+test("analyzes a real CSV and checks business rules", async ({
   page,
 }) => {
   await page.goto("/");
@@ -18,24 +18,11 @@ test("analyzes a real CSV with governance, rules, and signed review", async ({
   await expect(page.getByText("Analysis complete")).toBeVisible();
   await expect(page.getByText("164 rows · 6 columns")).toBeVisible();
 
-  await page.getByText("Prepare an executive report").click();
-  await page.getByLabel(/Data owner/).fill("Data Operations");
-  await page.getByLabel(/Data classification/).selectOption("internal");
-  await page.getByLabel(/Report purpose/).fill("Release verification");
-  await expect(page.getByLabel(/I am allowed to use this non-personal file/)).toBeChecked();
-  await page.getByRole("button", { name: "Add report details" }).click();
-  await expect(page.getByText("Details added")).toBeVisible();
-
-  await page.getByText("Advanced checks and approval").click();
-  await page.getByText("Set business rules", { exact: true }).click();
+  await page.getByText("Business rules", { exact: true }).click();
   const revenueRule = page.locator(".rule-row").filter({ hasText: "revenue" });
   await revenueRule.getByLabel("Minimum").fill("0");
   await page.getByRole("button", { name: "Check these rules" }).click();
   await expect(page.getByText("All business rules passed.")).toBeVisible();
-
-  await page.getByRole("button", { name: "Mark as reviewed" }).click();
-  await expect(page.getByText(/2 event\(s\).*analysis.reviewed/)).toBeVisible();
-  await expect(page.getByText(/not an audit opinion, legal approval/i)).toBeVisible();
 
   await page.getByRole("button", { name: "Clear dataset" }).click();
   await expect(page.getByRole("heading", { name: /next discovery/ })).toBeVisible();
@@ -77,40 +64,39 @@ test("keeps product identity and the Nexus return path on mobile", async ({ page
   await expect(page.getByRole("heading", { name: /Good insights/ })).toBeVisible();
 });
 
-test("has no sign-in step and lets anyone review and approve a clean dataset", async ({ page }) => {
+test("has no sign-in or approval step and says when a file is ready to send", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("button", { name: /sign in|sign out/i })).toHaveCount(0);
-  await expect(page.getByText(/Sign in with your Nexus account/)).toHaveCount(0);
 
   await page.getByLabel(/I am allowed to analyze this file/).check();
   await page.getByLabel("Upload CSV file").setInputFiles({
     name: "clean.csv",
     mimeType: "text/csv",
-    buffer: Buffer.from("region,amount\nTH,10\nUS,20\nJP,30\n"),
+    buffer: Buffer.from("region,amount" + String.fromCharCode(10) + "TH,10" + String.fromCharCode(10) + "US,20" + String.fromCharCode(10) + "JP,30" + String.fromCharCode(10)),
   });
   await expect(page.getByText("Analysis complete")).toBeVisible();
   await page.getByRole("button", { name: "This is correct" }).click();
-  await expect(page.getByText("Confirm how row 1 was read")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Ready to send" })).toBeVisible();
+  await expect(page.getByText(/Mark as reviewed|Record internal approval|Data owner/)).toHaveCount(0);
 
-  await page.getByText("Prepare an executive report").click();
-  await page.getByLabel(/Data owner/).fill("Data Operations");
-  await page.getByLabel(/Data classification/).selectOption("internal");
-  await page.getByLabel(/Report purpose/).fill("Approval check");
-  await page.getByRole("button", { name: "Add report details" }).click();
-  await expect(page.getByText("Details added")).toBeVisible();
-
-  await page.getByText("Advanced checks and approval").click();
-  await page.getByText("Set business rules", { exact: true }).click();
-  await page.locator(".rule-row").filter({ hasText: "amount" }).getByLabel("Minimum").fill("0");
-  await page.getByRole("button", { name: "Check these rules" }).click();
-  await expect(page.getByText("All business rules passed.")).toBeVisible();
-
-  await page.getByRole("button", { name: "Mark as reviewed" }).click();
-  await expect(page.getByText(/2 event\(s\).*analysis.reviewed/)).toBeVisible();
-  await page.getByRole("button", { name: "Record internal approval" }).click();
-  await expect(page.getByText(/3 event\(s\).*analysis.approved/)).toBeVisible();
-  await expect(page.getByRole("button", { name: "Export approved brief" })).toBeVisible();
+  const [summary] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: "Export summary for sharing" }).click(),
+  ]);
+  expect(summary.suggestedFilename()).toBe("clean-data-check.html");
 });
+
+test("tells the user to fix a file before sending it", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel(/I am allowed to analyze this file/).check();
+  await page.getByLabel("Upload CSV file").setInputFiles({
+    name: "gaps.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from("id,team,amount" + String.fromCharCode(10) + "1,North,10" + String.fromCharCode(10) + "2,,20" + String.fromCharCode(10) + "3,South," + String.fromCharCode(10)),
+  });
+  await expect(page.getByRole("heading", { name: /Check before sending|Fix before sending/ })).toBeVisible();
+});
+
 test("compares two files in one session", async ({ page }) => {
   await page.goto("/");
   await page.getByLabel(/I am allowed to analyze this file/).check();
@@ -144,8 +130,7 @@ test("applies missing markers and saves a rule template", async ({ page }) => {
   await page.getByRole("button", { name: "Apply dataset setup" }).click();
   await expect(page.getByText("2 missing cells need review")).toBeVisible();
 
-  await page.getByText("Advanced checks and approval").click();
-  await page.getByText("Set business rules", { exact: true }).click();
+  await page.getByText("Business rules", { exact: true }).click();
   const rule = page.locator(".rule-row").filter({ hasText: "amount" });
   await rule.getByLabel("Minimum").fill("0");
   await page.getByLabel("Template name").fill("Amounts");
@@ -236,7 +221,7 @@ test("switches the interface and executive brief to Thai", async ({ page }) => {
   await expect(page.getByText("Analysis complete")).toBeVisible();
 });
 
-test("opens the executive brief for printing as PDF", async ({ page }) => {
+test("opens the summary for printing as PDF", async ({ page }) => {
   await page.goto("/");
   await page.getByLabel(/I am allowed to analyze this file/).check();
   await page
@@ -256,7 +241,7 @@ test("opens the executive brief for printing as PDF", async ({ page }) => {
   await page.getByRole("button", { name: "Print / Save as PDF" }).click();
   const popup = await popupPromise;
   await popup.waitForLoadState("load");
-  await expect(popup.getByRole("heading", { name: /Draft structural profile/ })).toBeVisible();
+  await expect(popup.getByRole("heading", { name: /Data check summary/ })).toBeVisible();
   await expect.poll(() => page.evaluate(() => (window as unknown as { __printed: boolean }).__printed)).toBe(true);
 });
 
@@ -296,7 +281,7 @@ test("follow-ups and a saved snapshot reach someone who only has the snapshot fi
 
   const [brief] = await Promise.all([
     page.waitForEvent("download"),
-    page.getByRole("button", { name: /Export draft profile/ }).click(),
+    page.getByRole("button", { name: /Export summary for sharing/ }).click(),
   ]);
   await brief.saveAs("test-results/followup-brief.html");
   const html = (await import("node:fs")).readFileSync("test-results/followup-brief.html", "utf8");

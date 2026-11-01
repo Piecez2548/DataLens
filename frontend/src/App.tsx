@@ -1,4 +1,4 @@
-import { getLanguage, setLanguage, t, tError, tf, type Lang } from "./i18n";
+import { getLanguage, setLanguage, t, tError, tf, tStatus, type Lang } from "./i18n";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import {
   Aperture,
@@ -15,15 +15,11 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import type { Analysis, AuditEvent, BusinessRule, FollowUp, FollowUps, SheetSummary } from "./types";
+import type { Analysis, BusinessRule, FollowUp, FollowUps, SheetSummary } from "./types";
 import { buildSnapshot, downloadSnapshot, isSnapshotName, parseSnapshot } from "./snapshot";
 import { forgetSettings, loadSettings, saveSettings, type SavedSettings } from "./savedSettings";
 import SheetOverview from "./SheetOverview";
-import {
-  GovernancePanel,
-  UploadPolicy,
-  type GovernanceInput,
-} from "./Governance";
+import { RulesPanel } from "./Rules";
 import { downloadExecutiveReport, printExecutiveReport } from "./report";
 import ChartBoundary from "./ChartBoundary";
 import Compare from "./Compare";
@@ -105,18 +101,10 @@ export default function App() {
   const [lastFile, setLastFile] = useState<File | null>(null);
   const [columnNames, setColumnNames] = useState<string[]>([]);
   const [columnTypes, setColumnTypes] = useState<string[]>([]);
-  const [governance, setGovernance] = useState<GovernanceInput>({
-    owner: "",
-    source_url: "",
-    verified_at: "",
-    classification: "",
-    purpose: "",
-  });
   const [authorized, setAuthorized] = useState(false);
   const [businessRules, setBusinessRules] = useState<
     Record<string, BusinessRule>
   >({});
-  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [markerText, setMarkerText] = useState("");
   const [sheetName, setSheetName] = useState("");
   const [headerRow, setHeaderRow] = useState("");
@@ -132,14 +120,6 @@ export default function App() {
   const compareInput = useRef<HTMLInputElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const uploadTrigger = useRef<HTMLButtonElement>(null);
-  const governanceReady = Boolean(
-    authorized &&
-      governance.owner.trim() &&
-      governance.purpose.trim() &&
-      governance.classification &&
-      (governance.classification !== "public" ||
-        (governance.source_url.startsWith("https://") && governance.verified_at)),
-  );
   async function requestAnalysis(
     file: File,
     headerMode: "auto" | "present" | "absent",
@@ -152,7 +132,7 @@ export default function App() {
       "schema",
       JSON.stringify({
         ...schema,
-        governance: { ...governance, authorized_to_process: attested },
+        authorized_to_process: attested,
         business_rules: schema?.business_rules ?? businessRules,
         missing_markers: schema?.missing_markers ?? parseMarkers(markerText),
         sheet: schema?.sheet,
@@ -306,7 +286,6 @@ export default function App() {
       if (effectiveGroup) nextSettings.group_by = effectiveGroup;
       saveSettings(file.name, nextSettings);
       setData(result);
-      setAuditEvents([result.audit_event]);
       setLastFile(file);
       setColumnNames(result.columns.map((item) => item.name));
       setColumnTypes(
@@ -354,7 +333,6 @@ export default function App() {
       setData(result);
       setOther(null);
       setLastFile(null);
-      setAuditEvents(snapshot.audit_events.length ? snapshot.audit_events : [result.audit_event]);
       setFollowUps(snapshot.follow_ups);
       setSheetOverview(snapshot.sheet_overview);
       setSheetName(result.provenance.sheet ?? "");
@@ -417,39 +395,6 @@ export default function App() {
       setBusy(false);
     }
   }
-  async function recordAudit(action: "review" | "approve", note: string) {
-    if (!data || busy) return;
-    setBusy(true);
-    setError("");
-    try {
-      const response = await fetch(`/api/audit/${action}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          analysis_id: data.governance.analysis_id,
-          analysis_event: data.audit_event,
-          review_event:
-            action === "approve"
-              ? [...auditEvents].reverse().find((event) => event.action === "analysis.reviewed")
-              : undefined,
-          note,
-        }),
-      });
-      const result = await response.json();
-      if (!response.ok) {
-        throw new Error(result.detail ?? "Could not record this audit event.");
-      }
-      setAuditEvents((events) => [...events, result as AuditEvent]);
-    } catch (caught) {
-      setError(
-        caught instanceof Error
-          ? caught.message
-          : "Could not record this audit event.",
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
   function clearDataset() {
     setData(null);
     setOther(null);
@@ -468,14 +413,6 @@ export default function App() {
     setColumnNames([]);
     setColumnTypes([]);
     setBusinessRules({});
-    setAuditEvents([]);
-    setGovernance({
-      owner: "",
-      source_url: "",
-      verified_at: "",
-      classification: "",
-      purpose: "",
-    });
     setAuthorized(false);
     setSelected("");
     setPage(0);
@@ -484,9 +421,6 @@ export default function App() {
     window.setTimeout(() => uploadTrigger.current?.focus(), 0);
   }
   const column = data?.columns.find((c) => c.name === selected);
-  const approved = Boolean(
-    data && auditEvents.some((event) => event.action === "analysis.approved" && event.analysis_id === data.governance.analysis_id),
-  );
   return (
     <div className={dark ? "app dark" : "app"}>
       <aside>
@@ -679,14 +613,14 @@ export default function App() {
                     <FileSpreadsheet size={15} />{t("Compare with another file")}</button>
                   <button
                     className="report-button"
-                    onClick={() => downloadExecutiveReport(data, auditEvents, { followUps, sheets: sheetOverview })}
+                    onClick={() => downloadExecutiveReport(data, { followUps, sheets: sheetOverview })}
                   >
-                    <Upload size={15} /> {approved ? t("Export approved brief") : t("Export draft profile")}
+                    <Upload size={15} /> {t("Export summary for sharing")}
                   </button>
                   <button
                     className="report-button"
                     onClick={() => {
-                      if (!printExecutiveReport(data, auditEvents, { followUps, sheets: sheetOverview })) {
+                      if (!printExecutiveReport(data, { followUps, sheets: sheetOverview })) {
                         setError("Your browser blocked the report window. Allow pop-ups for this site and try again.");
                       }
                     }}
@@ -695,7 +629,7 @@ export default function App() {
                   </button>
                   <button
                     className="report-button"
-                    onClick={() => downloadSnapshot(buildSnapshot(data, auditEvents, followUps, sheetOverview))}
+                    onClick={() => downloadSnapshot(buildSnapshot(data, followUps, sheetOverview))}
                   >
                     <Upload size={15} /> {t("Save snapshot")}
                   </button>
@@ -1018,52 +952,10 @@ export default function App() {
                       <Charts data={data} column={column} />
                     </Suspense></ChartBoundary>
                   )}
-                  {lastFile && (
-                    <UploadPolicy
-                      value={governance}
-                      authorized={authorized}
-                      ready={governanceReady}
-                      busy={busy}
-                      saved={Boolean(
-                        data.governance.declared.owner &&
-                          data.governance.declared.purpose,
-                      )}
-                      onChange={setGovernance}
-                      onAuthorized={setAuthorized}
-                      onSave={() => {
-                        const overrides = Object.fromEntries(
-                          columnNames.flatMap((name, index) =>
-                            columnTypes[index] === "auto"
-                              ? []
-                              : [[name, columnTypes[index]]],
-                          ),
-                        );
-                        void upload(
-                          lastFile,
-                          data.header.used ? "present" : "absent",
-                          {
-                            column_names: columnNames,
-                            type_overrides: overrides,
-                            business_rules: businessRules,
-                          },
-                        );
-                      }}
-                    />
-                  )}
-                  <GovernancePanel
+                  <RulesPanel
                     data={data}
                     rules={businessRules}
-                    auditEvents={auditEvents}
                     busy={busy}
-                    canApprove={
-                      data.executive.status === "Ready for exploration" &&
-                      data.business_rules.configured &&
-                      data.business_rules.passed &&
-                      data.header.mode !== "auto" &&
-                      governanceReady &&
-                      Boolean(data.governance.declared.owner) &&
-                      auditEvents.some((event) => event.action === "analysis.reviewed")
-                    }
                     onRule={(name, rule) =>
                       setBusinessRules((rules) => ({ ...rules, [name]: rule }))
                     }
@@ -1087,9 +979,6 @@ export default function App() {
                         },
                       );
                     }}
-                    onAudit={(action, note) =>
-                      void recordAudit(action, note)
-                    }
                   />
                 </>
               )}
@@ -1408,8 +1297,8 @@ function ExecutiveBrief({ data }: { data: Analysis }) {
     >
       <div className="executive-heading">
         <div>
-          <span className="eyebrow">{t("EXECUTIVE BRIEF")}</span>
-          <h2 id="executive-title">{t(data.executive.status)}</h2>
+          <span className="eyebrow">{t("DATA CHECK")}</span>
+          <h2 id="executive-title">{tStatus(data.executive.status)}</h2>
           <p>{executive.message}</p>
         </div>
         <div className="executive-count">

@@ -1,6 +1,6 @@
-import type { Analysis, AuditEvent, FollowUps, SheetSummary } from "./types";
+import type { Analysis, FollowUps, SheetSummary } from "./types";
 import { issueKindLabels } from "./issueExport";
-import { getLanguage, t, tReason } from "./i18n";
+import { getLanguage, t, tReason, tStatus } from "./i18n";
 
 const escapeHtml = (value: unknown) =>
   String(value ?? "")
@@ -15,12 +15,9 @@ const number = (value: number) =>
 
 export type ReportExtras = { followUps?: FollowUps; sheets?: SheetSummary[] };
 
-function buildReport(data: Analysis, auditEvents: AuditEvent[], extras: ReportExtras = {}) {
+function buildReport(data: Analysis, extras: ReportExtras = {}) {
   const generatedAt = new Date().toLocaleString();
-  const approved = auditEvents.some(
-    (event) => event.action === "analysis.approved" && event.analysis_id === data.governance.analysis_id,
-  );
-  const reportStatus = approved ? t("Approved for the declared purpose") : t("DRAFT — not reviewed and approved");
+  const verdict = tStatus(data.executive.status);
   const scoreCards = Object.entries(data.scores)
     .map(
       ([label, score]) => `
@@ -87,22 +84,15 @@ function buildReport(data: Analysis, auditEvents: AuditEvent[], extras: ReportEx
         `<tr><td>${escapeHtml(item.sheet)}</td><td>${item.error ? `<em>${escapeHtml(item.error)}</em>` : `${number(item.rows)} × ${number(item.columns)}`}</td><td>${item.error ? "" : escapeHtml(t(item.status))}</td><td>${item.error ? "" : number(item.issues)}</td><td>${item.error ? "" : escapeHtml(Object.entries(item.scores).map(([label, score]) => `${t(label)} ${score === null ? "N/A" : `${number(score)}%`}`).join(" · "))}</td></tr>`,
     )
     .join("");
-  const auditRows = auditEvents
-    .map(
-      (event) =>
-        `<tr><td>${escapeHtml(event.action)}</td><td>${escapeHtml(new Date(event.timestamp * 1000).toISOString())}</td><td><code>${escapeHtml(event.signature)}</code></td></tr>`,
-    )
-    .join("");
   const html = `<!doctype html>
 <html lang="${getLanguage()}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
-<title>DataLens ${approved ? "approved brief" : "draft profile"} · ${escapeHtml(data.filename)}</title>
+<title>DataLens · ${escapeHtml(data.filename)}</title>
 <style>
 :root{font-family:Inter,Arial,sans-serif;color:#20222d;background:#f5f6f9}*{box-sizing:border-box}body{margin:0}.page{max-width:980px;margin:32px auto;background:#fff;padding:48px;border:1px solid #e2e4eb;border-radius:12px}.top{display:flex;justify-content:space-between;gap:24px;border-bottom:2px solid #625de0;padding-bottom:24px}.brand{color:#625de0;font-weight:800;letter-spacing:.08em}.meta{text-align:right;color:#717687;font-size:12px}h1{font-size:34px;margin:10px 0 5px}h2{font-size:19px;margin:32px 0 14px}h3{font-size:14px;margin:18px 0 6px}p,li,small{color:#626777;line-height:1.6}.summary{font-size:17px;max-width:720px}.dataset{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:24px 0}.dataset div,.score-card{border:1px solid #e2e4eb;border-radius:8px;padding:16px}.dataset span,.score-card span{display:block;color:#717687;font-size:11px;text-transform:uppercase;letter-spacing:.07em}.dataset strong,.score-card strong{display:block;margin-top:7px;font-size:22px}.scores{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}.score-card strong{font-size:20px}.issue{display:flex;gap:12px;border-top:1px solid #e2e4eb;padding:16px 0}.severity{height:max-content;padding:4px 7px;border-radius:4px;background:#ececfd;color:#514cc6;font-size:9px;font-weight:700;text-transform:uppercase}.severity.high{background:#fbe7e9;color:#ad3944}.severity.medium{background:#fff3d8;color:#8b640f}.issue p{margin:0 0 4px}.positive{color:#247c68}.method{background:#f5f6f9;padding:18px;border-radius:8px;font-size:12px}table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:10px;border-bottom:1px solid #e2e4eb}th{color:#717687}.print{position:fixed;right:24px;top:24px;padding:11px 16px;border:0;border-radius:7px;background:#625de0;color:#fff;font-weight:700;cursor:pointer}@media print{body{background:#fff}.page{margin:0;border:0;padding:24px}.print{display:none}}@media(max-width:700px){.page{margin:0;padding:24px;border:0}.scores{grid-template-columns:repeat(2,1fr)}.dataset{grid-template-columns:1fr}.top{display:block}.meta{text-align:left;margin-top:14px}.print{position:static;margin:16px 24px 0}}
 </style></head><body><button class="print" onclick="window.print()">${t("Print / Save PDF")}</button><main class="page">
-<header class="top"><div><div class="brand">DATALENS</div><h1>${approved ? t("Approved data brief") : t("Draft structural profile")}</h1><p>${escapeHtml(data.filename)}</p><strong>${escapeHtml(reportStatus)}</strong></div><div class="meta">${t("Generated")} ${escapeHtml(generatedAt)}<br>${t("Session-only analysis.")}</div></header>
+<header class="top"><div><div class="brand">DATALENS</div><h1>${t("Data check summary")}</h1><p>${escapeHtml(data.filename)}</p><strong>${escapeHtml(verdict)}</strong></div><div class="meta">${t("Generated")} ${escapeHtml(generatedAt)}<br>${t("Session-only analysis.")}</div></header>
 <section><h2>${t("Evidence provenance")}</h2><div class="method"><strong>Uploaded source file</strong><br>All metrics below were deterministically calculated from the named file. Data rows and values were not generated by DataLens.<br>SHA-256: ${escapeHtml(data.provenance.sha256)}<br>Input: ${number(data.provenance.input_bytes)} bytes · ${number(data.provenance.file_rows)} parsed file rows · ${number(data.provenance.analyzed_rows)} analyzed rows · Method v${escapeHtml(data.provenance.method_version)} · ${data.provenance.source_format === "xlsx" ? `Excel sheet ${escapeHtml(data.provenance.sheet ?? "")}` : data.provenance.source_format === "json" ? "JSON records" : `Encoding ${escapeHtml(data.provenance.encoding)} · Delimiter ${escapeHtml(data.provenance.delimiter ?? "")}`}${data.provenance.missing_markers.length ? ` · Missing markers: ${escapeHtml(data.provenance.missing_markers.join(", "))}` : ""}</div></section>
-<section><h2>${t("Governance declaration")}</h2><div class="method">Analysis ID: ${escapeHtml(data.governance.analysis_id)}<br>Owner: ${escapeHtml(data.governance.declared.owner || "Not declared")}<br>Classification: ${escapeHtml(data.governance.declared.classification || "Not declared")}<br>Source: ${escapeHtml(data.governance.declared.source_url || "Not declared")}<br>Source checked by owner: ${escapeHtml(data.governance.declared.verified_at || "Not declared")}<br>Purpose: ${escapeHtml(data.governance.declared.purpose || "Not declared")}<br>Authorization attested: ${data.governance.declared.authorized_to_process === true ? "Yes" : "No"}<br>Application retention: no intentional persistence; transient framework and hosting processing may occur.</div></section>
-<section><h2>${escapeHtml(t(data.executive.status))}</h2><p class="summary">${escapeHtml(executive.message)}</p><div class="dataset"><div><span>${t("Rows")}</span><strong>${number(data.rows)}</strong></div><div><span>${t("Columns")}</span><strong>${number(data.column_count)}</strong></div><div><span>${t("Items to review")}</span><strong>${number(data.executive.issue_count)}</strong></div></div></section>
+<section><h2>${escapeHtml(verdict)}</h2><p class="summary">${escapeHtml(executive.message)}</p><div class="dataset"><div><span>${t("Rows")}</span><strong>${number(data.rows)}</strong></div><div><span>${t("Columns")}</span><strong>${number(data.column_count)}</strong></div><div><span>${t("Items to review")}</span><strong>${number(data.executive.issue_count)}</strong></div></div></section>
 <section><h2>${t("Quality scorecard")}</h2><div class="scores">${scoreCards}</div></section>
 <section><h2>${t("Priority findings")}</h2>${issues}</section>
 ${followUpRows ? `<section><h2>${t("Follow-up plan")}</h2><table><thead><tr><th>${t("Issue type")}</th><th>${t("Count")}</th><th>${t("Owner")}</th><th>${t("Due date")}</th><th>${t("Note")}</th></tr></thead><tbody>${followUpRows}</tbody></table></section>` : ""}
@@ -111,7 +101,6 @@ ${sheetRows ? `<section><h2>${t("All sheets")}</h2><table><thead><tr><th>${t("Wo
 ${outlierRows ? `<section><h2>${t("Potential outliers")}</h2><table><thead><tr><th>${t("Column")}</th><th>${t("Count")}</th><th>Q1</th><th>Q3</th></tr></thead><tbody>${outlierRows}</tbody></table></section>` : ""}
 ${locationRows ? `<section><h2>${t("Where to act")}</h2>${locationRows}</section>` : ""}
 ${ruleRows ? `<section><h2>${t("Business validation rules")}</h2><table><thead><tr><th>${t("Column")}</th><th>${t("Rule")}</th><th>${t("Checked")}</th><th>${t("Violations")}</th></tr></thead><tbody>${ruleRows}</tbody></table></section>` : ""}
-<section><h2>${t("Session review record")}</h2>${auditRows ? `<table><thead><tr><th>${t("Event")}</th><th>${t("UTC timestamp")}</th><th>${t("Full service signature")}</th></tr></thead><tbody>${auditRows}</tbody></table>` : "<p>No review event was recorded.</p>"}<p>The service signature protects the event metadata while the signing key remains controlled. This downloaded HTML is not centrally retained and can be edited after download, so it is not a durable or independently verifiable audit ledger.</p></section>
 <section><h2>${t("Decision note")}</h2><p class="method">${escapeHtml(executive.scope_note)} Correlations use complete finite numeric pairs and do not establish causation. Potential outliers use the 1.5×IQR rule. Validate findings against business definitions before making material decisions.</p></section>
 </main></body></html>`;
   const safeName = data.filename
@@ -121,13 +110,13 @@ ${ruleRows ? `<section><h2>${t("Business validation rules")}</h2><table><thead><
   return { html, safeName: safeName || "dataset" };
 }
 
-export function downloadExecutiveReport(data: Analysis, auditEvents: AuditEvent[], extras?: ReportExtras) {
-  const { html, safeName } = buildReport(data, auditEvents, extras);
+export function downloadExecutiveReport(data: Analysis, extras?: ReportExtras) {
+  const { html, safeName } = buildReport(data, extras);
   const blob = new Blob([html], { type: "text/html;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `${safeName}-executive-brief.html`;
+  link.download = `${safeName}-data-check.html`;
   document.body.append(link);
   link.click();
   link.remove();
@@ -136,8 +125,8 @@ export function downloadExecutiveReport(data: Analysis, auditEvents: AuditEvent[
 
 /** Opens the brief in a new tab and starts the browser print dialog, where "Save as PDF" is available.
  * The page's own button uses an inline handler that the site CSP blocks, so printing is triggered from here. */
-export function printExecutiveReport(data: Analysis, auditEvents: AuditEvent[], extras?: ReportExtras): boolean {
-  const { html } = buildReport(data, auditEvents, extras);
+export function printExecutiveReport(data: Analysis, extras?: ReportExtras): boolean {
+  const { html } = buildReport(data, extras);
   const url = URL.createObjectURL(new Blob([html], { type: "text/html;charset=utf-8" }));
   const popup = window.open(url, "_blank");
   if (!popup) {

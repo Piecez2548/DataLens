@@ -26,7 +26,7 @@ jobs:
 
           # Analysis is public: a small CSV with the data attestation must succeed without credentials.
           boundary = "datalens-smoke"
-          schema = json.dumps({"governance": {"authorized_to_process": True}})
+          schema = json.dumps({"authorized_to_process": True})
           body = (
               f"--{boundary}\r\n"
               'Content-Disposition: form-data; name="file"; filename="smoke.csv"\r\n'
@@ -47,7 +47,7 @@ jobs:
               result = json.load(response)
               assert response.status == 200
               assert result["rows"] == 2
-              assert result["audit_event"]["signature_algorithm"] == "HMAC-SHA256"
+              assert result["executive"]["status"] in {"Ready for exploration", "Review needed", "Action required"}
 
           with urllib.request.urlopen(origin, timeout=30) as response:
               headers = {key.lower(): value for key, value in response.headers.items()}

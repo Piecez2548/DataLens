@@ -1,4 +1,4 @@
-import type { Analysis, AuditEvent, FollowUp, FollowUps, SheetSummary } from "./types";
+import type { Analysis, FollowUp, FollowUps, SheetSummary } from "./types";
 
 // A snapshot is the finished analysis saved as a file, so it can be passed on without storing anything on the server.
 const KIND = "datalens.snapshot";
@@ -10,7 +10,6 @@ export type Snapshot = {
   version: typeof VERSION;
   saved_at: string;
   analysis: Analysis;
-  audit_events: AuditEvent[];
   follow_ups: FollowUps;
   sheet_overview: SheetSummary[];
 };
@@ -19,7 +18,6 @@ export const isSnapshotName = (name: string) => /\.datalens\.json$/i.test(name);
 
 export function buildSnapshot(
   analysis: Analysis,
-  auditEvents: AuditEvent[],
   followUps: FollowUps,
   sheetOverview: SheetSummary[],
 ): Snapshot {
@@ -28,7 +26,6 @@ export function buildSnapshot(
     version: VERSION,
     saved_at: new Date().toISOString(),
     analysis,
-    audit_events: auditEvents,
     follow_ups: followUps,
     sheet_overview: sheetOverview,
   };
@@ -79,11 +76,8 @@ export function parseSnapshot(raw: string): Snapshot {
     !isObject(a.executive.thai) ||
     !isObject(a.scores) ||
     !isObject(a.provenance) ||
-    !isObject(a.governance) ||
-    typeof a.governance.analysis_id !== "string" ||
     !isObject(a.business_rules) ||
-    !Array.isArray(a.business_rules.results) ||
-    !isObject(a.audit_event)
+    !Array.isArray(a.business_rules.results)
   ) {
     throw new Error("This snapshot is damaged or incomplete.");
   }
@@ -112,17 +106,11 @@ export function parseSnapshot(raw: string): Snapshot {
         }),
       )
     : [];
-  const events = Array.isArray(value.audit_events)
-    ? (value.audit_events.filter(
-        (item) => isObject(item) && typeof item.action === "string" && typeof item.signature === "string",
-      ) as unknown as AuditEvent[])
-    : [];
   return {
     kind: KIND,
     version: VERSION,
     saved_at: text(value.saved_at, 40),
     analysis: a as unknown as Analysis,
-    audit_events: events,
     follow_ups: followUps,
     sheet_overview: sheets,
   };

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Removed the approval workflow: the declaration form, "Mark as reviewed" / approval buttons, signed audit events, `/api/audit/*` endpoints and `DATALENS_AUDIT_SECRET`. DataLens is a pre-send check; the optional business-rule editor stays as "Business rules".
+- "Ready to send / Check before sending / Fix before sending" verdict (Thai: พร้อมส่ง / ตรวจก่อนส่ง / ต้องแก้ก่อนส่ง) replaces the exploration wording; the exported file is now a "Data check summary".
+- Columns named like dates that hold Excel date serial numbers (for example 45366) are flagged instead of being read silently as plain numbers.
+- Mobile: file actions in two columns and notices no longer squeeze their text.
+
 - Simpler home page: the header-row field and the separate snapshot button are gone. Title lines above a CSV table are skipped automatically when the rows below form a clean table (otherwise the suggestion notice or error explains what to do); a `.datalens.json` file is recognized when chosen or dropped like any other file.
 - Export buttons use the arrow-up icon; the print button uses a printer icon.
 

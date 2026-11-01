@@ -164,6 +164,7 @@ def _is_valid_date(value: str, order: str = "dmy") -> bool:
     return _to_date(value, order) is not None
 
 
+SERIAL_DATE_NAME = re.compile(r"date|time|due|deadline|created|updated|birth|dob|วันที่|วัน|กำหนด", re.IGNORECASE)
 THAI_ID_PATTERN = re.compile(r"\d{13}")
 THAI_PHONE_PATTERN = re.compile(r"0[2-9]\d{7,8}")
 THAI_ID_NAME_HINTS = ("national_id", "citizen", "id_card", "idcard", "thai_id", "เลขบัตร", "บัตรประชาชน")
@@ -440,6 +441,7 @@ def _executive_summary(
     personal_data: list[str],
     key_columns: list[str],
     key_duplicates: int,
+    serial_date_columns: list[str],
 ) -> dict:
     """Build the executive summary in English and Thai; the English `status` stays canonical for workflow checks."""
     issues = []
@@ -579,16 +581,29 @@ def _executive_summary(
                 "ลบหรือปิดบังคอลัมน์เหล่านี้ หรือยืนยันฐานทางกฎหมายและวิธีจัดการที่ได้รับอนุมัติก่อนส่งต่อ",
             ),
         )
+    if serial_date_columns:
+        add(
+            "medium",
+            ("Numbers that look like Excel dates", "ตัวเลขที่น่าจะเป็นวันที่ของ Excel"),
+            (
+                f"{', '.join(serial_date_columns[:3])} hold whole numbers in the range of Excel date serials (for example 45366 is 15 Mar 2024), so they are read as plain numbers, not dates.",
+                f"{', '.join(serial_date_columns[:3])} เก็บเป็นจำนวนเต็มในช่วงเดียวกับเลขวันที่ของ Excel (เช่น 45366 คือ 15 มี.ค. 2024) จึงถูกอ่านเป็นตัวเลขธรรมดา ไม่ใช่วันที่",
+            ),
+            (
+                "In Excel, format the column as a date (or write it as YYYY-MM-DD) and upload again.",
+                "ใน Excel ให้จัดรูปแบบคอลัมน์เป็นวันที่ (หรือเขียนเป็น YYYY-MM-DD) แล้วอัปโหลดใหม่",
+            ),
+        )
     high = sum(item["severity"] == "high" for item in issues)
     if high:
         status = "Action required"
-        message = ("Resolve high-impact data risks before executive reporting.", "แก้ไขความเสี่ยงของข้อมูลที่มีผลสูงก่อนรายงานผู้บริหาร")
+        message = ("Fix the high-impact problems before you send this data.", "แก้ปัญหาที่มีผลสูงก่อนส่งข้อมูลนี้ให้ผู้อื่น")
     elif issues:
         status = "Review needed"
-        message = ("The dataset is usable for exploration after the listed checks.", "ใช้ข้อมูลสำรวจได้หลังตรวจสอบรายการที่แจ้ง")
+        message = ("Check the listed items before you send this data.", "ตรวจรายการที่แจ้งก่อนส่งข้อมูลนี้ให้ผู้อื่น")
     else:
         status = "Ready for exploration"
-        message = ("No structural issues were found by the supported checks.", "ไม่พบปัญหาเชิงโครงสร้างจากการตรวจที่รองรับ")
+        message = ("No problems were found by the supported checks, so this data is ready to send.", "ไม่พบปัญหาจากการตรวจที่รองรับ ข้อมูลนี้พร้อมส่ง")
     severity_order = {"high": 0, "medium": 1, "info": 2}
     issues.sort(key=lambda issue: severity_order[issue["severity"]])
     scope = (
@@ -768,7 +783,7 @@ def analyze(
             month_first_proof += int((second_part > 12).sum())
     date_order_ambiguous = date_order is None and seen_slash_dates > 0 and not day_first_proof and not month_first_proof
     chosen_date_order = date_order or ("mdy" if month_first_proof and not day_first_proof else "dmy")
-    columns, numeric, personal_data = [], {}, []
+    columns, numeric, personal_data, serial_date_columns = [], {}, [], []
     row_offset = 1 if source_format == "json" else (2 if use_header else 1) + skipped
     samples: dict[str, dict] = {}
 
@@ -827,6 +842,14 @@ def analyze(
         histogram = []
         numeric_format = None
         sample("missing", normalized.index[normalized[name].isna()], name, "Blank or marked as missing")
+        if (
+            dtype == "numeric"
+            and SERIAL_DATE_NAME.search(name)
+            and matched.size
+            and _numeric_series(matched).between(36526, 73415).mean() >= 0.9
+            and (_numeric_series(matched) % 1 == 0).mean() >= 0.9
+        ):
+            serial_date_columns.append(name)
         if mismatch:
             sample("mismatch", values.index[kinds != dtype], name, f"Does not look like {dtype}")
         if dtype == "numeric":
@@ -1074,6 +1097,7 @@ def analyze(
         personal_data=personal_data,
         key_columns=key_columns,
         key_duplicates=key_summary["duplicate_rows"] if key_summary else 0,
+        serial_date_columns=serial_date_columns,
     )
     numeric_names = list(numeric)
     scatter = []

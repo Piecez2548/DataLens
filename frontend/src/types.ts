@@ -114,14 +114,6 @@ export interface Analysis {
       violations: number;
     }[];
   };
-  governance: {
-    analysis_id: string;
-    retention: "request_only";
-    server_storage: false;
-    cache_control: "no-store";
-    declared: Record<string, string | boolean>;
-  };
-  audit_event: AuditEvent;
   provenance: {
     source: "uploaded_file";
     sha256: string;
@@ -145,16 +137,6 @@ export interface Analysis {
     calculation_mode: "deterministic";
     data_values_generated: false;
   };
-}
-
-export interface AuditEvent {
-  event_version: number;
-  action: string;
-  analysis_id: string;
-  timestamp: number;
-  details: Record<string, unknown>;
-  signature: string;
-  signature_algorithm: "HMAC-SHA256";
 }
 
 export interface BusinessRule {

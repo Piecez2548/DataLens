@@ -1,4 +1,4 @@
-import { t, tf } from "./i18n";
+import { t, tf, tStatus } from "./i18n";
 import type { SheetSummary } from "./types";
 
 const fmt = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 2 });
@@ -43,7 +43,7 @@ export default function SheetOverview({
                   <>
                     <td>{fmt(item.rows)}</td>
                     <td>{fmt(item.columns)}</td>
-                    <td>{t(item.status)}</td>
+                    <td>{tStatus(item.status)}</td>
                     <td>{fmt(item.issues)}</td>
                     <td>
                       {Object.entries(item.scores)

@@ -1,5 +1,8 @@
 # DataLens commercial readiness
 
+> Historical document: it describes earlier versions that had sign-in and an approval workflow. Both were removed; see CHANGELOG.md.
+
+
 **Status:** controlled demonstration only; not approved for paid, public or organizational production use.
 
 DataLens provides deterministic CSV profiling, exact-byte fingerprinting and portable signed workflow events. These controls support traceability inside a demonstration. They do not prove source truth, create an audit opinion, certify compliance or provide a durable organizational system of record.

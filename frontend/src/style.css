@@ -230,6 +230,9 @@
   .header-notice {
     flex-wrap: wrap;
   }
+  .header-notice div {
+    flex: 1 1 calc(100% - 40px);
+  }
   .header-notice button {
     margin-left: 33px;
   }
@@ -960,7 +963,8 @@ footer span:first-child {
   }
   .file-actions {
     display: grid;
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
   }
   .file-actions button {
     width: 100%;

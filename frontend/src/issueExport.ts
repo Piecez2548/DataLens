@@ -1,5 +1,5 @@
 import type { Analysis, FollowUps } from "./types";
-import { t, tReason } from "./i18n";
+import { t, tReason, tStatus } from "./i18n";
 import { downloadWorkbook } from "./xlsx";
 
 export const issueKindLabels: Record<string, string> = {
@@ -101,7 +101,7 @@ export function downloadIssuesXlsx(data: Analysis, followUps: FollowUps = {}) {
       header: [t("Issue type"), t("Total"), t("Listed")],
       rows: [
         [t("File"), data.filename, null],
-        [t("Status"), t(data.executive.status), null],
+        [t("Status"), tStatus(data.executive.status), null],
         ...kinds.map(([kind, entry]): (string | number | null)[] => [
           t(issueKindLabels[kind] ?? kind),
           entry.total,
