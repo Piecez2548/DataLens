@@ -100,7 +100,7 @@ Business rules are separate from structural quality. A dataset can have a high q
 
 - No accounts. Hosted requests must attest that the file is non-personal.
 - HTTPS is enforced by Vercel; HSTS, CSP, frame blocking, referrer, permissions, and MIME-sniffing headers are configured.
-- Excel files are limited to 4 MiB in production. CSV and JSON files up to 40 MB are compressed (gzip) in the browser before upload so they fit the hosting request limit of 4 MiB; the server unpacks them with a hard size cap. Every file is also limited to 100,000 rows, 100 columns and 2,000,000 cells so that analysis finishes within the 60-second function limit.
+- Excel files are limited to 4 MiB in production. CSV and JSON files up to 40 MB are compressed (gzip) in the browser before upload so they fit the hosting request limit of 4 MiB; the server unpacks them with a hard size cap. Every file is also limited to 100,000 rows, 100 columns and 4,000,000 cells so that analysis finishes within the 60-second function limit.
 - Responses use `Cache-Control: no-store`; CSV contents are not intentionally persisted by application code. Platform-level transient handling must be confirmed with the hosting provider before confidential use.
 
 See [data governance](docs/DATA_GOVERNANCE.md), [threat model](docs/THREAT_MODEL.md), [security review](docs/SECURITY.md), and [operations](docs/OPERATIONS.md).

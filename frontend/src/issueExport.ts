@@ -1,6 +1,6 @@
 import type { Analysis, FollowUps } from "./types";
 import { t, tf, tReason, tStatus } from "./i18n";
-import { downloadWorkbook } from "./xlsx";
+import { downloadWorkbook, type Sheet } from "./xlsx";
 
 export const issueKindLabels: Record<string, string> = {
   missing: "Missing values",
@@ -10,6 +10,7 @@ export const issueKindLabels: Record<string, string> = {
   outlier: "Outliers",
   rule: "Business-rule violations",
   key_duplicate: "Repeated business keys",
+  variant: "Spelling variants",
 };
 
 export type IssueRow = {
@@ -135,9 +136,10 @@ const describeIssue = (label: string) => {
 export function downloadProblemRowsXlsx(data: Analysis) {
   const found = data.problem_rows;
   const label = t(data.issue_samples.row_label === "row" ? "Row" : "Record");
-  const sheets = [
+  const sheets: Sheet[] = [
     {
       name: t("Rows to fix"),
+      widths: [10, 46, ...found.columns.map(() => 20)],
       header: [label, t("What to fix"), ...found.columns],
       rows: found.rows.map((item): (string | number | null)[] => [
         item.row,

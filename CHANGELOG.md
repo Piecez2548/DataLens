@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- New findings: values spelled differently only by capitals or spacing ("Bangkok" / "bangkok "), future dates in columns named like past events, negative values in amount/price/quantity columns; type-conflict findings now name example values.
+- Cell limit raised to 4,000,000 after measuring 2,000,000 cells at about 17 s on the hosted service. The "rows to fix" Excel has a wider "What to fix" column.
+
 - Export rows to fix: the original rows behind the located issues (up to 500) with a "What to fix" column, as Excel.
 - A saved snapshot can be the baseline in "Compare with a file or snapshot".
 - "Personal data was found" notice with a CSV copy of the file without the detected columns (`/api/redact`).

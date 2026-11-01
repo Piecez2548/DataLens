@@ -454,3 +454,21 @@ test("analyzes a text file larger than the plain upload limit by compressing it"
   await page.getByLabel("Upload CSV file").setInputFiles({ name: "big.csv", mimeType: "text/csv", buffer: big });
   await expect(page.getByText("90,000 rows · 4 columns")).toBeVisible({ timeout: 60_000 });
 });
+
+test("flags spelling variants, negative amounts and future dates before sending", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel(/I am allowed to analyze this file/).check();
+  const nl = String.fromCharCode(10);
+  await page.getByLabel("Upload CSV file").setInputFiles({
+    name: "orders.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from(
+      ["id,city,order_date,amount", "1,Bangkok,2024-01-05,100", "2,bangkok ,2024-01-06,-5", "3,Bangkok,2099-01-01,50", "4,Chiang Mai,2024-02-01,50"].join(nl) + nl,
+    ),
+  });
+  await expect(page.getByText("Same value spelled differently in city")).toBeVisible();
+  await expect(page.getByText("negative values in amount")).toBeVisible();
+  await expect(page.getByText("in order_date are in the future")).toBeVisible();
+  await page.getByRole("navigation", { name: "Dataset views" }).getByRole("button", { name: "Issues" }).click();
+  await expect(page.getByRole("tab", { name: /Spelling variants/ })).toBeVisible();
+});

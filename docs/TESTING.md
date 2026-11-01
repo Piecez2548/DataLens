@@ -46,10 +46,11 @@ Use the **Try a sample** buttons on the home page for repeatable demonstrations.
 - Repeat at mobile width (about 375 px): no horizontal page scroll and controls at least 44 px tall.
 - Toggle dark and light themes.
 - Upload an invalid file and an Excel file above 4 MiB; verify a clear error and that the prior dataset remains usable.
-- A 10–40 MB CSV is accepted because it is compressed before upload (the page keeps working; a file with more than 2,000,000 cells gets a clear message).
+- A 10–40 MB CSV is accepted because it is compressed before upload (the page keeps working; a file with more than 4,000,000 cells gets a clear message).
 - Export rows to fix: open the Excel file, confirm the Row and What to fix columns and that IDs with leading zeros stay text.
 - Open a snapshot saved earlier as the comparison baseline of a corrected file.
 - A file with a Thai phone or ID column shows "Personal data was found"; the downloaded copy has no such column and the original is unchanged.
+- Context warnings: a column named like `order_date` with a future date, a column named like `amount` with negative values, and a text column with `Bangkok` / `bangkok ` each produce a medium finding; the located spelling variants appear under "Spelling variants". Type-conflict findings name example values.
 - Performance reference: a 100,000-row, 8-column, 4 MB CSV completes in about 16 seconds on the hosted service (about 6 seconds locally).
 - Choose Back to Nexus; verify the hub opens without transferring file contents.
 

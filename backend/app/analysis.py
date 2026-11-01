@@ -17,7 +17,7 @@ import openpyxl
 import pandas as pd
 
 MAX_BYTES = 40 * 1024 * 1024
-MAX_CELLS = 2_000_000
+MAX_CELLS = 4_000_000
 MAX_ROWS = 100_000
 MAX_COLUMNS = 100
 MAX_XLSX_UNCOMPRESSED = 50 * 1024 * 1024
@@ -165,6 +165,8 @@ def _is_valid_date(value: str, order: str = "dmy") -> bool:
     return _to_date(value, order) is not None
 
 
+AMOUNT_NAME = re.compile(r"amount|price|total|qty|quantity|revenue|cost|salary|ราคา|จำนวน|ยอด|เงิน", re.IGNORECASE)
+PAST_DATE_NAME = re.compile(r"order|created|signup|sign_up|birth|dob|joined|sent|paid|invoice|delivered|สั่ง|เกิด|สร้าง|ออก|ส่ง", re.IGNORECASE)
 SERIAL_DATE_NAME = re.compile(r"date|time|due|deadline|created|updated|birth|dob|วันที่|วัน|กำหนด", re.IGNORECASE)
 THAI_ID_PATTERN = re.compile(r"\d{13}")
 THAI_PHONE_PATTERN = re.compile(r"0[2-9]\d{7,8}")
@@ -473,6 +475,9 @@ def _executive_summary(
     key_columns: list[str],
     key_duplicates: int,
     serial_date_columns: list[str],
+    mismatch_examples: list[tuple[str, str, list[str]]],
+    context_warnings: list[dict],
+    variant_columns: list[tuple[str, int, str]],
 ) -> dict:
     """Build the executive summary in English and Thai; the English `status` stays canonical for workflow checks."""
     issues = []
@@ -525,8 +530,10 @@ def _executive_summary(
             "medium",
             (f"{mismatches:,} values conflict with their column type", f"มี {mismatches:,} ค่าที่ขัดกับชนิดของคอลัมน์"),
             (
-                "Mixed types can break sorting, aggregation, and downstream imports.",
-                "ชนิดข้อมูลที่ปนกันอาจทำให้การเรียงลำดับ การรวมยอด และการนำเข้าระบบอื่นผิดพลาด",
+                "Mixed types can break sorting, aggregation, and downstream imports."
+                + "".join(f" In {name} (expected {dtype}): {', '.join(repr(v) for v in found)}." for name, dtype, found in mismatch_examples[:3]),
+                "ชนิดข้อมูลที่ปนกันอาจทำให้การเรียงลำดับ การรวมยอด และการนำเข้าระบบอื่นผิดพลาด"
+                + "".join(f" ใน {name} (คาดว่าเป็น {dtype}): {', '.join(repr(v) for v in found)}" for name, dtype, found in mismatch_examples[:3]),
             ),
             ("Standardize the flagged values before analysis.", "ปรับค่าที่ถูกทำเครื่องหมายให้เป็นรูปแบบเดียวกันก่อนวิเคราะห์"),
         )
@@ -611,6 +618,39 @@ def _executive_summary(
                 "Remove or mask these columns, or confirm a lawful basis and approved handling before sharing.",
                 "ลบหรือปิดบังคอลัมน์เหล่านี้ หรือยืนยันฐานทางกฎหมายและวิธีจัดการที่ได้รับอนุมัติก่อนส่งต่อ",
             ),
+        )
+    for warning in context_warnings:
+        if warning["kind"] == "future_date":
+            add(
+                "medium",
+                (f"{warning['count']:,} dates in {warning['column']} are in the future", f"มี {warning['count']:,} วันที่ใน {warning['column']} ที่อยู่ในอนาคต"),
+                (
+                    "A column named like a past event holds dates later than today.",
+                    "คอลัมน์ที่ชื่อบ่งว่าเป็นเหตุการณ์ในอดีตมีวันที่หลังวันนี้",
+                ),
+                ("Check the year or the day/month order of these dates.", "ตรวจปีหรือลำดับวัน/เดือนของวันที่เหล่านี้"),
+            )
+        else:
+            add(
+                "medium",
+                (f"{warning['count']:,} negative values in {warning['column']}", f"มี {warning['count']:,} ค่าติดลบใน {warning['column']}"),
+                (
+                    "Amounts, prices and quantities are normally not negative; refunds or entry errors would show up this way.",
+                    "ยอดเงิน ราคา และจำนวนมักไม่ติดลบ รายการคืนเงินหรือการคีย์ผิดจะปรากฏแบบนี้",
+                ),
+                ("Confirm each one is intended (for example a refund) or correct it.", "ยืนยันว่าตั้งใจ (เช่น การคืนเงิน) หรือแก้ไข"),
+            )
+    if variant_columns:
+        names = ", ".join(name for name, _, _ in variant_columns[:3])
+        example = variant_columns[0][2]
+        add(
+            "medium",
+            (f"Same value spelled differently in {names}", f"ค่าเดียวกันสะกดต่างกันใน {names}"),
+            (
+                f"Values that differ only by capital letters or spacing are counted as different groups (for example {example}).",
+                f"ค่าที่ต่างกันเพียงตัวพิมพ์ใหญ่เล็กหรือช่องว่างจะถูกนับเป็นคนละกลุ่ม (เช่น {example})",
+            ),
+            ("Use one spelling for each value before grouping or sending.", "ใช้การสะกดเดียวกันสำหรับแต่ละค่าก่อนจัดกลุ่มหรือส่งต่อ"),
         )
     if serial_date_columns:
         add(
@@ -779,7 +819,7 @@ def analyze(
         if len(rows) > MAX_ROWS:
             raise ValueError("Maximum 100,000 rows supported.")
         if len(rows) * width > MAX_CELLS:
-            raise ValueError("This file has too many cells to analyze (limit 2,000,000 = rows x columns). Remove columns or split the file.")
+            raise ValueError(f"This file has too many cells to analyze (limit {MAX_CELLS:,} = rows x columns). Remove columns or split the file.")
     except (StopIteration, csv.Error) as exc:
         raise ValueError("The CSV is empty or malformed.") from exc
     if not rows:
@@ -820,6 +860,10 @@ def analyze(
     date_order_ambiguous = date_order is None and seen_slash_dates > 0 and not day_first_proof and not month_first_proof
     chosen_date_order = date_order or ("mdy" if month_first_proof and not day_first_proof else "dmy")
     columns, numeric, personal_data, serial_date_columns = [], {}, [], []
+    mismatch_examples: list[tuple[str, str, list[str]]] = []
+    context_warnings: list[dict] = []
+    variant_columns: list[tuple[str, int, str]] = []
+    today = datetime.datetime.now(tz=datetime.UTC).date()
     row_offset = 1 if source_format == "json" else (2 if use_header else 1) + skipped
     samples: dict[str, dict] = {}
     problem_positions: set[int] = set()
@@ -890,6 +934,20 @@ def analyze(
             serial_date_columns.append(name)
         if mismatch:
             sample("mismatch", values.index[kinds != dtype], name, f"Does not look like {dtype}")
+            mismatch_examples.append((name, dtype, [str(v)[:30] for v in values[kinds != dtype].drop_duplicates().head(3)]))
+        if dtype == "categorical" and 1 < values.nunique() <= 500:
+            folded = _map_unique(values, lambda value: re.sub(r"\s+", " ", value).casefold())
+            spelled = values.groupby(folded).agg(lambda group: group.value_counts().index.tolist())
+            groups = [(key, variants) for key, variants in spelled.items() if len(variants) > 1]
+            for key, variants in groups[:20]:
+                sample(
+                    "variant",
+                    values.index[(folded == key) & (values != variants[0])],
+                    name,
+                    f"Spelled differently from the more common “{variants[0]}”",
+                )
+            if groups:
+                variant_columns.append((name, len(groups), f"{groups[0][1][0]} / {groups[0][1][1]}"))
         if dtype == "numeric":
             parsed = _numeric_series(matched)
             formats = Counter(_parse_number(value)[1] for value in matched)
@@ -899,6 +957,9 @@ def analyze(
             )
             good = parsed[np.isfinite(parsed)]
             bad = len(parsed) - len(good)
+            negatives = int((good < 0).sum())
+            if negatives and AMOUNT_NAME.search(name):
+                context_warnings.append({"kind": "negative_amount", "column": name, "count": negatives})
             sample("invalid", parsed.index[~np.isfinite(parsed)], name, "Not a finite number")
             numeric[name] = _numeric_series(normalized[name]).replace([np.inf, -np.inf], np.nan)
             if len(good):
@@ -919,6 +980,11 @@ def analyze(
             invalid_dates = ~_map_unique(matched, lambda value: _is_valid_date(value, chosen_date_order)).astype(bool)
             bad = int(invalid_dates.sum())
             sample("invalid", matched.index[invalid_dates], name, "Not a valid calendar date")
+            if PAST_DATE_NAME.search(name):
+                dates = _map_unique(matched, lambda value: _to_date(value, chosen_date_order))
+                future = int(sum(1 for item in dates if item is not None and item is not pd.NaT and item > today))
+                if future:
+                    context_warnings.append({"kind": "future_date", "column": name, "count": future})
         elif dtype == "email":
             invalid_emails = ~_map_unique(matched, lambda value: bool(EMAIL_PATTERN.fullmatch(value))).astype(bool)
             bad = int(invalid_emails.sum())
@@ -1136,6 +1202,9 @@ def analyze(
         key_columns=key_columns,
         key_duplicates=key_summary["duplicate_rows"] if key_summary else 0,
         serial_date_columns=serial_date_columns,
+        mismatch_examples=mismatch_examples,
+        context_warnings=context_warnings,
+        variant_columns=variant_columns,
     )
     numeric_names = list(numeric)
     scatter = []

@@ -78,6 +78,7 @@ const th: Record<string, string> = {
   "Overall score": "คะแนนรวม",
   "Equal-weight mean of available dimensions.": "ค่าเฉลี่ยถ่วงน้ำหนักเท่ากันของมิติที่มี",
   Overview: "ภาพรวม",
+  "Spelling variants": "สะกดต่างกัน",
   "Personal data was found": "พบข้อมูลส่วนบุคคล",
   "These columns look like national ID or phone numbers: {names}. Remove them before sending the file.": "คอลัมน์เหล่านี้ดูเหมือนเลขบัตรประชาชนหรือเบอร์โทรศัพท์: {names} ควรลบก่อนส่งไฟล์",
   "Download a copy without these columns (CSV)": "ดาวน์โหลดสำเนาที่ไม่มีคอลัมน์เหล่านี้ (CSV)",
@@ -402,6 +403,7 @@ export function t(text: string): string {
 }
 
 const reasonRules: [RegExp, (m: RegExpMatchArray) => string][] = [
+  [/^Spelled differently from the more common “(.*)”$/, (m) => `สะกดต่างจาก “${m[1]}” ที่พบบ่อยกว่า`],
   [/^Blank or marked as missing$/, () => "ว่างหรือถูกกำหนดให้เป็นค่าว่าง"],
   [/^Repeats an earlier row$/, () => "ซ้ำกับแถวก่อนหน้า"],
   [/^Does not look like (.+)$/, (m) => `ไม่เหมือนชนิด ${m[1]}`],
@@ -420,7 +422,7 @@ const reasonRules: [RegExp, (m: RegExpMatchArray) => string][] = [
 const errorRules: [RegExp, (m: RegExpMatchArray) => string][] = [
   [/^This file is still larger than (\d+) MB after compression/, (m) => `ไฟล์ยังใหญ่กว่า ${m[1]} MB แม้บีบอัดแล้ว ลองลบคอลัมน์หรือแบ่งไฟล์`],
   [/^The file exceeds the (\d+) MB limit\.$/, (m) => `ไฟล์เกินขีดจำกัด ${m[1]} MB`],
-  [/^This file has too many cells/, () => "ไฟล์มีเซลล์มากเกินไป (สูงสุด 2,000,000 เซลล์ = แถว × คอลัมน์) ลองลบคอลัมน์หรือแบ่งไฟล์"],
+  [/^This file has too many cells to analyze \(limit ([0-9,]+)/, (m) => `ไฟล์มีเซลล์มากเกินไป (สูงสุด ${m[1]} เซลล์ = แถว × คอลัมน์) ลองลบคอลัมน์หรือแบ่งไฟล์`],
   [/^Choose a CSV, XLSX or JSON file no larger than (\d+) MB\.$/, (m) => `เลือกไฟล์ CSV, XLSX หรือ JSON ที่ไม่เกิน ${m[1]} MB`],
   [/^Cannot reach the analysis service\./, () => "เชื่อมต่อบริการวิเคราะห์ไม่ได้ กรุณาลองใหม่อีกครั้ง"],
   [/^The sample file could not be loaded/, () => "โหลดไฟล์ตัวอย่างไม่ได้ กรุณาลองอีกครั้ง"],

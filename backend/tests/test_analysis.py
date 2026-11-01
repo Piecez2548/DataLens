@@ -717,3 +717,28 @@ def test_redact_removes_the_chosen_columns_and_nothing_else():
         files={"file": ("p.csv", b"a\n1\n"), "schema": (None, json.dumps({"drop_columns": ["a"]}))},
     )
     assert everything.status_code == 400
+
+
+def test_type_conflicts_name_the_offending_values():
+    result = analyze(b"id,amount\n1,10\n2,N/A\n3,20\n4,oops\n5,30\n", "m.csv")
+    detail = next(i["detail"] for i in result["executive"]["issues"] if "conflict" in i["title"])
+    assert "amount" in detail and "'N/A'" in detail
+
+
+def test_context_warnings_flag_future_dates_and_negative_amounts():
+    result = analyze(b"id,order_date,amount\n1,2024-01-05,100\n2,2099-01-01,-5\n3,2024-02-01,50\n", "c.csv")
+    titles = " | ".join(i["title"] for i in result["executive"]["issues"])
+    assert "in order_date are in the future" in titles
+    assert "negative values in amount" in titles
+    quiet = analyze(b"id,note_date,balance\n1,2099-01-01,-5\n2,2024-02-01,-6\n", "q.csv")
+    assert not any("future" in i["title"] or "negative" in i["title"] for i in quiet["executive"]["issues"])
+
+
+def test_spelling_variants_are_flagged_by_case_and_spacing_only():
+    result = analyze(b"id,city\n1,Bangkok\n2,bangkok \n3,Bangkok\n4,Chiang Mai\n5,Phuket\n", "v.csv")
+    variant = result["issue_samples"]["kinds"]["variant"]
+    assert variant["total"] == 1
+    assert variant["examples"][0]["row"] == 3
+    assert any("spelled differently" in i["title"] for i in result["executive"]["issues"])
+    same = analyze(b"id,city\n1,Bangkok\n2,Chiang Mai\n3,Bangkok\n", "s.csv")
+    assert "variant" not in same["issue_samples"]["kinds"]

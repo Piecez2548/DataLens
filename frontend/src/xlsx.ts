@@ -1,7 +1,7 @@
 // Minimal dependency-free .xlsx writer: stored (uncompressed) ZIP, inline strings, one bold header style.
 // Strings are written as text cells, so values that start with = or + are never run as formulas.
 export type Cell = string | number | null;
-export type Sheet = { name: string; header: string[]; rows: Cell[][] };
+export type Sheet = { name: string; header: string[]; rows: Cell[][]; widths?: number[] };
 
 const encoder = new TextEncoder();
 const crcTable = (() => {
@@ -51,7 +51,7 @@ function sheetXml(sheet: Sheet) {
     return `<row r="${rowIndex + 1}">${cells.join("")}</row>`;
   });
   const widths = sheet.header
-    .map((_, index) => `<col min="${index + 1}" max="${index + 1}" width="${index === sheet.header.length - 1 ? 48 : 22}" customWidth="1"/>`)
+    .map((_, index) => `<col min="${index + 1}" max="${index + 1}" width="${sheet.widths?.[index] ?? (index === sheet.header.length - 1 ? 48 : 22)}" customWidth="1"/>`)
     .join("");
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols>${widths}</cols><sheetData>${lines.join("")}</sheetData></worksheet>`;
 }
