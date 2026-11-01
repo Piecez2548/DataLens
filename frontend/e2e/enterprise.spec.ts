@@ -384,3 +384,73 @@ test("the Upload file button still works after opening a snapshot", async ({ pag
   await page.getByRole("button", { name: "Upload file" }).click();
   await expect(page.getByRole("button", { name: "Choose a CSV file" })).toBeVisible();
 });
+
+test("exports the original rows that need fixing", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel(/I am allowed to analyze this file/).check();
+  await page.getByLabel("Upload CSV file").setInputFiles(messyCsv);
+  await expect(page.getByText("4 rows · 3 columns")).toBeVisible();
+  await page.getByRole("navigation", { name: "Dataset views" }).getByRole("button", { name: "Issues" }).click();
+  const [workbook] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: /Export rows to fix/ }).click(),
+  ]);
+  expect(workbook.suggestedFilename()).toBe("messy-rows-to-fix.xlsx");
+  await workbook.saveAs("test-results/rows-to-fix.xlsx");
+});
+
+test("compares the current file with a saved snapshot", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel(/I am allowed to analyze this file/).check();
+  await page.getByLabel("Upload CSV file").setInputFiles(messyCsv);
+  await expect(page.getByText("4 rows · 3 columns")).toBeVisible();
+  const [snapshot] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: "Save snapshot" }).click(),
+  ]);
+  await snapshot.saveAs("test-results/before.datalens.json");
+
+  await page.getByLabel("Upload CSV file").setInputFiles({
+    name: "messy-fixed.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from("id,team,amount" + String.fromCharCode(10) + "1,North,10" + String.fromCharCode(10) + "2,East,20" + String.fromCharCode(10) + "3,South,30" + String.fromCharCode(10) + "4,South,40" + String.fromCharCode(10)),
+  });
+  await expect(page.getByText("messy-fixed.csv", { exact: true })).toBeVisible();
+  await page.getByLabel("Choose a file to compare").setInputFiles("test-results/before.datalens.json");
+  await expect(page.getByRole("heading", { name: /Compare|comparison/i }).first()).toBeVisible();
+  await expect(page.getByText("messy.csv").first()).toBeVisible();
+});
+
+test("offers a copy without personal-data columns", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel(/I am allowed to analyze this file/).check();
+  const nl = String.fromCharCode(10);
+  await page.getByLabel("Upload CSV file").setInputFiles({
+    name: "people.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from(["id,phone,amount", "1,0812345678,10", "2,0898765432,20", "3,0823456789,30"].join(nl) + nl),
+  });
+  await expect(page.getByText("Personal data was found")).toBeVisible();
+  const [copy] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: /Download a copy without these columns/ }).click(),
+  ]);
+  expect(copy.suggestedFilename()).toBe("people-without-personal-columns.csv");
+  await copy.saveAs("test-results/people-clean.csv");
+  const text = (await import("node:fs")).readFileSync("test-results/people-clean.csv", "utf8");
+  expect(text).toContain("amount");
+  expect(text).not.toContain("0812345678");
+});
+
+test("analyzes a text file larger than the plain upload limit by compressing it", async ({ page }) => {
+  test.setTimeout(90_000);
+  const nl = String.fromCharCode(10);
+  const lines = ["id,team,note,amount"];
+  for (let i = 0; i < 90_000; i++) lines.push(`${i},team${i % 7},some repeated descriptive text for padding some repeated descriptive text for padding some repeated descriptive text ${i % 50},${i % 997}`);
+  const big = Buffer.from(lines.join(nl) + nl);
+  expect(big.length).toBeGreaterThan(10 * 1024 * 1024);
+  await page.goto("/");
+  await page.getByLabel(/I am allowed to analyze this file/).check();
+  await page.getByLabel("Upload CSV file").setInputFiles({ name: "big.csv", mimeType: "text/csv", buffer: big });
+  await expect(page.getByText("90,000 rows · 4 columns")).toBeVisible({ timeout: 60_000 });
+});

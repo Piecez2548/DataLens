@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Export rows to fix: the original rows behind the located issues (up to 500) with a "What to fix" column, as Excel.
+- A saved snapshot can be the baseline in "Compare with a file or snapshot".
+- "Personal data was found" notice with a CSV copy of the file without the detected columns (`/api/redact`).
+- Larger text files: CSV and JSON up to 40 MB are gzip-compressed in the browser before upload; files above 2,000,000 cells are refused with a clear message.
+
 - Removed the approval workflow: the declaration form, "Mark as reviewed" / approval buttons, signed audit events, `/api/audit/*` endpoints and `DATALENS_AUDIT_SECRET`. DataLens is a pre-send check; the optional business-rule editor stays as "Business rules".
 - "Ready to send / Check before sending / Fix before sending" verdict (Thai: พร้อมส่ง / ตรวจก่อนส่ง / ต้องแก้ก่อนส่ง) replaces the exploration wording; the exported file is now a "Data check summary".
 - Columns named like dates that hold Excel date serial numbers (for example 45366) are flagged instead of being read silently as plain numbers.

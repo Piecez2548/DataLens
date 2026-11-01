@@ -45,7 +45,11 @@ Use the **Try a sample** buttons on the home page for repeatable demonstrations.
 - Switch to Thai and walk through every tab. Remaining English should be limited to data values, file names and technical identifiers.
 - Repeat at mobile width (about 375 px): no horizontal page scroll and controls at least 44 px tall.
 - Toggle dark and light themes.
-- Upload an invalid file and a file above 4 MiB; verify a clear error and that the prior dataset remains usable.
+- Upload an invalid file and an Excel file above 4 MiB; verify a clear error and that the prior dataset remains usable.
+- A 10–40 MB CSV is accepted because it is compressed before upload (the page keeps working; a file with more than 2,000,000 cells gets a clear message).
+- Export rows to fix: open the Excel file, confirm the Row and What to fix columns and that IDs with leading zeros stay text.
+- Open a snapshot saved earlier as the comparison baseline of a corrected file.
+- A file with a Thai phone or ID column shows "Personal data was found"; the downloaded copy has no such column and the original is unchanged.
 - Performance reference: a 100,000-row, 8-column, 4 MB CSV completes in about 16 seconds on the hosted service (about 6 seconds locally).
 - Choose Back to Nexus; verify the hub opens without transferring file contents.
 

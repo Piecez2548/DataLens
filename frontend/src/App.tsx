@@ -19,6 +19,7 @@ import type { Analysis, BusinessRule, FollowUp, FollowUps, SheetSummary } from "
 import { buildSnapshot, downloadSnapshot, isSnapshotName, parseSnapshot } from "./snapshot";
 import { forgetSettings, loadSettings, saveSettings, type SavedSettings } from "./savedSettings";
 import SheetOverview from "./SheetOverview";
+import { allowedFile, checkSentSize, MAX_TEXT_MB, MAX_UPLOAD_MB, prepareUpload } from "./upload";
 import { RulesPanel } from "./Rules";
 import { downloadExecutiveReport, printExecutiveReport } from "./report";
 import ChartBoundary from "./ChartBoundary";
@@ -26,7 +27,6 @@ import Compare from "./Compare";
 import IssueExplorer from "./IssueExplorer";
 import GroupSummary from "./GroupSummary";
 const Charts = lazy(() => import("./Charts"));
-const MAX_UPLOAD_MB = import.meta.env.PROD ? 4 : 10;
 const baseTabs = ["Overview", "Data quality", "Issues", "Summary", "Explore", "Data preview"] as const;
 type SchemaOptions = {
   column_names?: string[];
@@ -127,7 +127,9 @@ export default function App() {
     attested: boolean = authorized,
   ): Promise<Analysis> {
     const body = new FormData();
-    body.append("file", file);
+    const toSend = await prepareUpload(file);
+    checkSentSize(toSend);
+    body.append("file", toSend);
     body.append(
       "schema",
       JSON.stringify({
@@ -169,18 +171,57 @@ export default function App() {
     }
     return response.json();
   }
-  const validFile = (file: File) =>
-    /\.(csv|xlsx|json|jsonl|ndjson)$/i.test(file.name) && file.size <= MAX_UPLOAD_MB * 1024 * 1024;
+  const validFile = allowedFile;
+  async function downloadWithoutColumns(columns: string[]) {
+    if (busy || !lastFile || !columns.length) return;
+    setBusy(true);
+    setError("");
+    try {
+      const body = new FormData();
+      const toSend = await prepareUpload(lastFile);
+      checkSentSize(toSend);
+      body.append("file", toSend);
+      body.append(
+        "schema",
+        JSON.stringify({
+          authorized_to_process: authorized,
+          drop_columns: columns,
+          sheet: data?.provenance.sheet ?? undefined,
+          header_row: data?.provenance.header_row && data.provenance.header_row > 1 ? data.provenance.header_row : undefined,
+        }),
+      );
+      const response = await fetch(`/api/redact?header_mode=${data?.header.used ? "present" : "absent"}`, {
+        method: "POST",
+        body,
+      });
+      if (!response.ok) {
+        const failure = await response.json().catch(() => ({ detail: "Could not create the copy. Please try again." }));
+        throw new Error(typeof failure.detail === "string" ? failure.detail : "Could not create the copy. Please try again.");
+      }
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${lastFile.name.replace(/\.[a-z0-9]+$/i, "")}-without-personal-columns.csv`;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not create the copy. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
   async function compareWith(file: File) {
     if (busy || !data) return;
     if (!validFile(file)) {
-      setError(`Choose a CSV, XLSX or JSON file no larger than ${MAX_UPLOAD_MB} MB.`);
+      setError(`Choose a CSV, XLSX or JSON file no larger than ${MAX_TEXT_MB} MB.`);
       return;
     }
     setBusy(true);
     setError("");
     try {
-      setOther(await requestAnalysis(file, "auto"));
+      setOther(isSnapshotName(file.name) ? parseSnapshot(await file.text()).analysis : await requestAnalysis(file, "auto"));
       setTab("Compare");
     } catch (e) {
       setError(
@@ -207,7 +248,7 @@ export default function App() {
       return;
     }
     if (!validFile(file)) {
-      setError(`Choose a CSV or XLSX file no larger than ${MAX_UPLOAD_MB} MB.`);
+      setError(`Choose a CSV, XLSX or JSON file no larger than ${MAX_TEXT_MB} MB.`);
       return;
     }
     setBusy(true);
@@ -587,7 +628,7 @@ export default function App() {
                 </div>
               </div>
               <small>
-                {tf("CSV, Excel (.xlsx) or JSON · up to {mb} MB · 100,000 rows · 100 columns", { mb: MAX_UPLOAD_MB })}
+                {tf("CSV or JSON up to {text} MB, Excel up to {mb} MB · 100,000 rows · 100 columns", { text: MAX_TEXT_MB, mb: MAX_UPLOAD_MB })}
               </small>
             </section>
           ) : (
@@ -610,7 +651,7 @@ export default function App() {
                     disabled={busy}
                     onClick={() => compareInput.current?.click()}
                   >
-                    <FileSpreadsheet size={15} />{t("Compare with another file")}</button>
+                    <FileSpreadsheet size={15} />{t("Compare with a file or snapshot")}</button>
                   <button
                     className="report-button"
                     onClick={() => downloadExecutiveReport(data, { followUps, sheets: sheetOverview })}
@@ -698,6 +739,29 @@ export default function App() {
                       >
                         {t("Don't remember these")}
                       </button>
+                    </section>
+                  )}
+                  {data.columns.some((item) => item.pattern) && (
+                    <section className="header-notice" role="status">
+                      <CircleAlert size={20} />
+                      <div>
+                        <strong>{t("Personal data was found")}</strong>
+                        <p>
+                          {tf("These columns look like national ID or phone numbers: {names}. Remove them before sending the file.", {
+                            names: data.columns.filter((item) => item.pattern).map((item) => item.name).join(", "),
+                          })}
+                        </p>
+                      </div>
+                      {lastFile && (
+                        <button
+                          disabled={busy}
+                          onClick={() =>
+                            void downloadWithoutColumns(data.columns.filter((item) => item.pattern).map((item) => item.name))
+                          }
+                        >
+                          {t("Download a copy without these columns (CSV)")}
+                        </button>
+                      )}
                     </section>
                   )}
                   <ExecutiveBrief data={data} />

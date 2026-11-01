@@ -1,5 +1,5 @@
 import type { Analysis, FollowUps } from "./types";
-import { t, tReason, tStatus } from "./i18n";
+import { t, tf, tReason, tStatus } from "./i18n";
 import { downloadWorkbook } from "./xlsx";
 
 export const issueKindLabels: Record<string, string> = {
@@ -121,6 +121,39 @@ export function downloadIssuesXlsx(data: Analysis, followUps: FollowUps = {}) {
       ]),
     },
   ]);
+}
+
+const asCell = (value: string): string | number =>
+  /^-?(?:0|[1-9]\d{0,14})(?:\.\d+)?$/.test(value) ? Number(value) : value;
+
+const describeIssue = (label: string) => {
+  const [kind, column] = label.split(":");
+  return `${t(issueKindLabels[kind] ?? kind)}${column ? ` (${column})` : ""}`;
+};
+
+/** The original rows that have problems, with what is wrong in the first columns, ready to hand to whoever fixes them. */
+export function downloadProblemRowsXlsx(data: Analysis) {
+  const found = data.problem_rows;
+  const label = t(data.issue_samples.row_label === "row" ? "Row" : "Record");
+  const sheets = [
+    {
+      name: t("Rows to fix"),
+      header: [label, t("What to fix"), ...found.columns],
+      rows: found.rows.map((item): (string | number | null)[] => [
+        item.row,
+        item.issues.map(describeIssue).join("; "),
+        ...item.values.map(asCell),
+      ]),
+    },
+  ];
+  if (found.total > found.listed) {
+    sheets.push({
+      name: t("Note"),
+      header: [t("Note")],
+      rows: [[tf("Only the first {listed} of {total} rows are listed. Fix them and check the file again to see the rest.", { listed: found.listed, total: found.total })]],
+    });
+  }
+  downloadWorkbook(`${baseName(data)}-rows-to-fix.xlsx`, sheets);
 }
 
 export function downloadIssuesJson(data: Analysis, followUps: FollowUps = {}) {

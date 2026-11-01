@@ -654,3 +654,66 @@ def test_excel_date_serials_in_a_plain_number_column_are_flagged():
     assert "Numbers that look like Excel dates" in titles
     plain = analyze(chr(10).join(["order,amount"] + [f"{i},{45366 + i}" for i in range(1, 6)]).encode(), "plain.csv")
     assert "Numbers that look like Excel dates" not in [item["title"] for item in plain["executive"]["issues"]]
+
+
+def test_problem_rows_return_the_original_rows_behind_the_issues():
+    result = analyze(b"id,team,amount\n1,North,10\n2,,20\n3,South,\n3,South,\n", "a.csv")
+    rows = result["problem_rows"]
+    assert rows["total"] == 3
+    assert rows["columns"] == ["id", "team", "amount"]
+    assert [item["row"] for item in rows["rows"]] == [3, 4, 5]
+    assert rows["rows"][0]["values"] == ["2", "", "20"]
+    assert "missing:team" in rows["rows"][0]["issues"]
+    clean = analyze(b"id,amount\n1,10\n2,20\n", "b.csv")
+    assert clean["problem_rows"]["total"] == 0
+
+
+def test_gzip_upload_is_unpacked_and_analyzed_under_its_original_name():
+    import gzip
+
+    body = gzip.compress(b"id,amount\n1,10\n2,20\n")
+    response = TestClient(app).post("/api/analyze", files={"file": ("data.csv.gz", body)})
+    assert response.status_code == 200
+    assert response.json()["filename"] == "data.csv"
+    assert response.json()["rows"] == 2
+
+
+def test_gzip_upload_rejects_bad_data_and_decompression_bombs(monkeypatch):
+    import gzip
+
+    client = TestClient(app)
+    assert client.post("/api/analyze", files={"file": ("x.csv.gz", b"not gzip")}).status_code == 400
+    assert client.post("/api/analyze", files={"file": ("x.xlsx.gz", gzip.compress(b"x"))}).status_code == 400
+    monkeypatch.setattr("app.main.MAX_BYTES", 1000)
+    bomb = gzip.compress(b"a,b\n" + b"1,2\n" * 5000)
+    assert client.post("/api/analyze", files={"file": ("big.csv.gz", bomb)}).status_code == 413
+
+
+def test_files_with_too_many_cells_are_refused_with_a_clear_message(monkeypatch):
+    monkeypatch.setattr("app.analysis.MAX_CELLS", 10)
+    with pytest.raises(ValueError, match="too many cells"):
+        analyze(b"a,b,c\n1,2,3\n4,5,6\n7,8,9\n10,11,12\n", "wide.csv")
+
+
+def test_redact_removes_the_chosen_columns_and_nothing_else():
+    client = TestClient(app)
+    csv_bytes = b"id,phone,amount\n1,0812345678,10\n2,0898765432,20\n"
+    schema = json.dumps({"drop_columns": ["phone"]})
+    response = client.post(
+        "/api/redact?header_mode=present",
+        files={"file": ("p.csv", csv_bytes), "schema": (None, schema)},
+    )
+    assert response.status_code == 200
+    text = response.content.decode("utf-8-sig")
+    assert text.splitlines() == ["id,amount", "1,10", "2,20"]
+    assert "0812345678" not in text
+    missing = client.post(
+        "/api/redact",
+        files={"file": ("p.csv", csv_bytes), "schema": (None, json.dumps({"drop_columns": ["nope"]}))},
+    )
+    assert missing.status_code == 400
+    everything = client.post(
+        "/api/redact?header_mode=present",
+        files={"file": ("p.csv", b"a\n1\n"), "schema": (None, json.dumps({"drop_columns": ["a"]}))},
+    )
+    assert everything.status_code == 400

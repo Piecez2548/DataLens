@@ -75,6 +75,12 @@ export interface Analysis {
       max: number | null;
     }[];
   } | null;
+  problem_rows: {
+    total: number;
+    listed: number;
+    columns: string[];
+    rows: { row: number; issues: string[]; values: string[] }[];
+  };
   issue_samples: {
     row_label: "row" | "record";
     max_examples: number;

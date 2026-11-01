@@ -7,6 +7,8 @@ Uploaded file bytes (CSV, Excel, JSON), derived metrics and previews, exported i
 ## Trust boundaries and controls
 
 - There are no accounts and no approval or audit records. Hosted requests must attest that the file is non-personal, and Thai national ID or phone patterns block approval.
+- Gzip uploads are inflated with a hard output cap and rejected if more remains, which limits decompression-bomb risk. `/api/redact` rewrites the uploaded file without chosen columns and returns it in the same request; nothing is stored, and it applies the same non-personal attestation on the hosted service.
+- `problem_rows` in an analysis response repeats up to 500 original rows (cell text capped at 120 characters) from the file the user just uploaded; it is part of the same no-store response.
 - Excel input reads cached cell values only. Formulas, macros and external links are never evaluated, and decompressed workbook size is capped at 50 MB.
 - Extension, byte, row, column, parser, metadata, rule-count, and string-length limits reduce malformed-input and resource-exhaustion risk.
 - No-store responses, no application persistence, and a restrictive browser security policy reduce unintended retention and content injection risk.

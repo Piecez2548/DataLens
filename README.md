@@ -19,6 +19,7 @@ DataLens checks xlsx, csv and json data before you send it to someone else: it s
 - Transparent Completeness, Consistency, Uniqueness, Validity, and Overall scores.
 - Thai/English interface and executive brief; JSON, Excel .xlsx (any sheet) and CSV input; located issue lists exportable as CSV/JSON; user-defined missing markers, Thai national ID/phone personal-data flags, records-over-time chart, two-file comparison, and browser-local rule templates.
 - Per-column required, allowed-value, minimum, and maximum business rules.
+- "Export rows to fix": the original rows that have problems, with what to fix, as Excel. A copy of the file without detected personal-data columns can be downloaded as CSV. A saved snapshot can be used as the comparison baseline.
 - A "ready to send" verdict, a shareable data-check summary (HTML, print or save as PDF) and saved snapshots (`.datalens.json`).
 - SHA-256 source fingerprint, deterministic method version, and no-generated-values declaration.
 - Conservative header detection and regression coverage for mixed types, sequential numeric measures, alternate delimiters, missing-cell severity, and rule validation.
@@ -99,7 +100,7 @@ Business rules are separate from structural quality. A dataset can have a high q
 
 - No accounts. Hosted requests must attest that the file is non-personal.
 - HTTPS is enforced by Vercel; HSTS, CSP, frame blocking, referrer, permissions, and MIME-sniffing headers are configured.
-- Uploads are limited to 4 MiB in production, 100,000 rows, and 100 columns.
+- Excel files are limited to 4 MiB in production. CSV and JSON files up to 40 MB are compressed (gzip) in the browser before upload so they fit the hosting request limit of 4 MiB; the server unpacks them with a hard size cap. Every file is also limited to 100,000 rows, 100 columns and 2,000,000 cells so that analysis finishes within the 60-second function limit.
 - Responses use `Cache-Control: no-store`; CSV contents are not intentionally persisted by application code. Platform-level transient handling must be confirmed with the hosting provider before confidential use.
 
 See [data governance](docs/DATA_GOVERNANCE.md), [threat model](docs/THREAT_MODEL.md), [security review](docs/SECURITY.md), and [operations](docs/OPERATIONS.md).
@@ -129,7 +130,7 @@ No approved product screenshots are checked into this repository. Demonstrations
 
 - Operator privacy notice, ROPA, DPA/subprocessor review, transfer assessment, DSAR and incident workflows, followed by Thai counsel/DPO sign-off before personal-data use.
 - Durable organization audit storage with customer-managed retention and verification keys.
-- Approved encrypted object storage for files larger than 4 MiB.
+- Approved encrypted object storage for Excel files larger than 4 MiB and for text files whose compressed size exceeds 4 MiB.
 - Saved policy templates, and richer time-series analysis.
 
 

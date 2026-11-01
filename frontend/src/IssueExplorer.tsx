@@ -6,6 +6,7 @@ import {
   downloadIssuesCsv,
   downloadIssuesJson,
   downloadIssuesXlsx,
+  downloadProblemRowsXlsx,
   issueKindLabels,
 } from "./issueExport";
 
@@ -56,6 +57,8 @@ export default function IssueExplorer({
             <Upload size={15} />{t("Export issue list (CSV)")}</button>
           <button className="report-button" onClick={() => downloadIssuesXlsx(data, followUps)}>
             <Upload size={15} />{t("Export issue list (Excel)")}</button>
+          <button className="report-button" onClick={() => downloadProblemRowsXlsx(data)}>
+            <Upload size={15} />{t("Export rows to fix (Excel)")}</button>
           <button className="report-button" onClick={() => downloadIssuesJson(data, followUps)}>
             <Upload size={15} />{t("Export (JSON)")}</button>
         </div>

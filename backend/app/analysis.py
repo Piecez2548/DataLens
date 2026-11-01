@@ -16,7 +16,8 @@ import numpy as np
 import openpyxl
 import pandas as pd
 
-MAX_BYTES = 10 * 1024 * 1024
+MAX_BYTES = 40 * 1024 * 1024
+MAX_CELLS = 2_000_000
 MAX_ROWS = 100_000
 MAX_COLUMNS = 100
 MAX_XLSX_UNCOMPRESSED = 50 * 1024 * 1024
@@ -424,6 +425,36 @@ def _detect_header(first: list[str], second: list[str]) -> bool:
     )
 
 
+MAX_PROBLEM_ROWS = 500
+MAX_PROBLEM_CELLS = 60_000
+
+
+def _problem_rows(frame: pd.DataFrame, positions: set[int], samples: dict, row_offset: int) -> dict:
+    """The original rows behind the located issues (lowest row numbers first), so they can be handed to whoever fixes them."""
+    labels: dict[int, list[str]] = {}
+    for kind, entry in samples.items():
+        for example in entry["examples"]:
+            found = labels.setdefault(example["row"], [])
+            label = f"{kind}:{example['column']}" if example["column"] else kind
+            if label not in found:
+                found.append(label)
+    limit = max(1, min(MAX_PROBLEM_ROWS, MAX_PROBLEM_CELLS // max(len(frame.columns), 1)))
+    chosen = sorted(positions)[:limit]
+    return {
+        "total": len(positions),
+        "listed": len(chosen),
+        "columns": list(frame.columns),
+        "rows": [
+            {
+                "row": position + row_offset,
+                "issues": labels.get(position + row_offset, []),
+                "values": [value[:120] for value in frame.iloc[position].tolist()],
+            }
+            for position in chosen
+        ],
+    }
+
+
 def _executive_summary(
     *,
     scores: dict,
@@ -643,6 +674,25 @@ def _executive_summary(
     return english
 
 
+def _read_text(content: bytes, filename: str, sheet: str | None) -> tuple[str, str | None, list[str] | None, str, str, str]:
+    """Turn an uploaded CSV, workbook or JSON file into delimited text; returns text, sheet, sheets, encoding, delimiter, format."""
+    if len(content) > MAX_BYTES:
+        raise ValueError(f"The file exceeds the {MAX_BYTES // (1024 * 1024)} MB limit.")
+    sheet_name, sheet_names = None, None
+    if sheet is not None and not isinstance(sheet, str):
+        raise ValueError("The worksheet name must be text.")
+    if content.startswith(b"PK\x03\x04"):
+        text, sheet_name, sheet_names = _xlsx_to_csv_text(content, sheet)
+        return text, sheet_name, sheet_names, "xlsx", ",", "xlsx"
+    if filename.lower().endswith(JSON_SUFFIXES):
+        text, encoding = _json_to_csv_text(content)
+        return text, None, None, encoding, ",", "json"
+    text, encoding = _decode(content)
+    if "\x00" in text:
+        raise ValueError("The file contains binary data.")
+    return text, None, None, encoding, _detect_delimiter(text), "csv"
+
+
 def analyze(
     content: bytes,
     filename: str,
@@ -658,23 +708,7 @@ def analyze(
     group_by: dict | None = None,
     year_era: str | None = None,
 ) -> dict:
-    if len(content) > MAX_BYTES:
-        raise ValueError("CSV exceeds the 10 MB limit.")
-    sheet_name, sheet_names = None, None
-    if sheet is not None and not isinstance(sheet, str):
-        raise ValueError("The worksheet name must be text.")
-    if content.startswith(b"PK\x03\x04"):
-        text, sheet_name, sheet_names = _xlsx_to_csv_text(content, sheet)
-        encoding, delimiter, source_format = "xlsx", ",", "xlsx"
-    elif filename.lower().endswith(JSON_SUFFIXES):
-        text, encoding = _json_to_csv_text(content)
-        delimiter, source_format = ",", "json"
-    else:
-        text, encoding = _decode(content)
-        if "\x00" in text:
-            raise ValueError("The file contains binary data.")
-        delimiter = _detect_delimiter(text)
-        source_format = "csv"
+    text, sheet_name, sheet_names, encoding, delimiter, source_format = _read_text(content, filename, sheet)
     markers = missing_markers or []
     if (
         not isinstance(markers, list)
@@ -744,6 +778,8 @@ def analyze(
             raise ValueError("Column names must be unique.")
         if len(rows) > MAX_ROWS:
             raise ValueError("Maximum 100,000 rows supported.")
+        if len(rows) * width > MAX_CELLS:
+            raise ValueError("This file has too many cells to analyze (limit 2,000,000 = rows x columns). Remove columns or split the file.")
     except (StopIteration, csv.Error) as exc:
         raise ValueError("The CSV is empty or malformed.") from exc
     if not rows:
@@ -786,11 +822,13 @@ def analyze(
     columns, numeric, personal_data, serial_date_columns = [], {}, [], []
     row_offset = 1 if source_format == "json" else (2 if use_header else 1) + skipped
     samples: dict[str, dict] = {}
+    problem_positions: set[int] = set()
 
     def sample(kind: str, index, column: str | None, reason: str) -> None:
         """Record up to MAX_SAMPLES located examples per issue kind while counting every occurrence."""
         entry = samples.setdefault(kind, {"total": 0, "examples": []})
         entry["total"] += len(index)
+        problem_positions.update(int(position) for position in index)
         room = MAX_SAMPLES - len(entry["examples"])
         for position in list(index)[: max(room, 0)]:
             if column is None:
@@ -1126,6 +1164,7 @@ def analyze(
         "preview": normalized.head(100).where(normalized.head(100).notna(), None).to_dict("records"),
         "key_duplicates": key_summary,
         "group_summary": group_summary,
+        "problem_rows": _problem_rows(frame, problem_positions, samples, row_offset),
         "issue_samples": {
             "row_label": "record" if source_format == "json" else "row",
             "max_examples": MAX_SAMPLES,
@@ -1173,3 +1212,40 @@ def analyze(
             "data_values_generated": False,
         },
     }
+
+
+def redact_columns(
+    content: bytes,
+    filename: str,
+    drop_columns: list[str],
+    header_mode: str = "auto",
+    sheet: str | None = None,
+    header_row: int | None = None,
+) -> str:
+    """Return the file as CSV text without the named columns. Header handling follows the analysis settings."""
+    if not isinstance(drop_columns, list) or not drop_columns or not all(isinstance(name, str) for name in drop_columns):
+        raise ValueError("Choose the columns to remove.")
+    text, _, _, _, delimiter, _ = _read_text(content, filename, sheet)
+    try:
+        rows = list(csv.reader(io.StringIO(text), delimiter=delimiter, strict=True))
+    except csv.Error as exc:
+        raise ValueError("The CSV is empty or malformed.") from exc
+    if header_row is not None:
+        if isinstance(header_row, bool) or not isinstance(header_row, int) or not 1 <= header_row <= min(len(rows), 1000):
+            raise ValueError("The header row must be a row number inside the file.")
+        rows = rows[header_row - 1 :]
+    if not rows:
+        raise ValueError("The CSV is empty or malformed.")
+    use_header = _detect_header(rows[0], rows[1] if len(rows) > 1 else []) if header_mode == "auto" else header_mode == "present"
+    names = [cell.strip() for cell in rows[0]] if use_header else [f"column_{index + 1}" for index in range(len(rows[0]))]
+    unknown = set(drop_columns) - set(names)
+    if unknown:
+        raise ValueError("A column to remove is not in this file.")
+    keep = [index for index, name in enumerate(names) if name not in set(drop_columns)]
+    if not keep:
+        raise ValueError("Every column would be removed.")
+    buffer = io.StringIO()
+    writer = csv.writer(buffer, lineterminator="\r\n")
+    for row in rows:
+        writer.writerow([row[index] if index < len(row) else "" for index in keep])
+    return buffer.getvalue()
