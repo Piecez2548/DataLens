@@ -1250,3 +1250,15 @@ footer span:first-child {
   .upload-actions { flex-direction: column; align-items: stretch; }
   .upload-actions .header-row-field { width: auto; max-width: none; }
 }
+
+.send-check ul { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 4px; }
+.send-check li { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--border); font-size: 14px; flex-wrap: wrap; }
+.send-check li:first-child { border-top: 0; }
+.send-check li svg { flex: none; }
+.send-check li.ok svg { color: var(--success-text); }
+.send-check li.problem svg { color: var(--warning-text); }
+.send-check li strong { min-width: 190px; }
+.send-check li span { color: var(--muted); flex: 1; }
+.send-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.ignore-warning { margin-top: 4px; font-size: 12px; }
+@media (max-width: 700px) { .send-check li strong { min-width: 0; flex-basis: 100%; } }

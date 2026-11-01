@@ -19,6 +19,8 @@ import type { Analysis, BusinessRule, FollowUp, FollowUps, SheetSummary } from "
 import { buildSnapshot, downloadSnapshot, isSnapshotName, parseSnapshot } from "./snapshot";
 import { forgetSettings, loadSettings, saveSettings, type SavedSettings } from "./savedSettings";
 import SheetOverview from "./SheetOverview";
+import SendCheck from "./SendCheck";
+import { downloadProblemRowsXlsx } from "./issueExport";
 import { allowedFile, checkSentSize, MAX_TEXT_MB, MAX_UPLOAD_MB, prepareUpload } from "./upload";
 import { RulesPanel } from "./Rules";
 import { downloadExecutiveReport, printExecutiveReport } from "./report";
@@ -37,6 +39,7 @@ type SchemaOptions = {
   header_row?: number | null;
   date_order?: "dmy" | "mdy";
   year_era?: "be" | "ce";
+  ignored_warnings?: string[];
   business_key?: string[];
   group_by?: { by: string; measure?: string } | null;
 };
@@ -112,6 +115,7 @@ export default function App() {
   const [keyColumns, setKeyColumns] = useState<string[]>([]);
   const [groupBy, setGroupBy] = useState({ by: "", measure: "" });
   const [yearEra, setYearEra] = useState<"" | "be" | "ce">("");
+  const [ignoredWarnings, setIgnoredWarnings] = useState<string[]>([]);
   const [followUps, setFollowUps] = useState<FollowUps>({});
   const [sheetOverview, setSheetOverview] = useState<SheetSummary[]>([]);
   const [snapshotInfo, setSnapshotInfo] = useState("");
@@ -144,6 +148,7 @@ export default function App() {
             : (schema?.header_row ?? (headerRow ? Number(headerRow) : undefined)),
         date_order: schema?.date_order ?? (dateOrder || undefined),
         year_era: schema?.year_era ?? (yearEra || undefined),
+        ignored_warnings: schema?.ignored_warnings ?? (ignoredWarnings.length ? ignoredWarnings : undefined),
         business_key: schema?.business_key ?? (keyColumns.length ? keyColumns : undefined),
         group_by:
           schema?.group_by === null
@@ -288,6 +293,9 @@ export default function App() {
         setYearEra(used.year_era ?? "");
         setMarkerText((used.missing_markers ?? []).join(", "));
       }
+      if (fresh || schema?.ignored_warnings) {
+        setIgnoredWarnings(schema?.ignored_warnings ?? used?.ignored_warnings ?? []);
+      }
       setSheetName(result.provenance.sheet ?? "");
       if (schema?.business_key) setKeyColumns(schema.business_key);
       if (fresh || schema?.sheet || schema?.header_row) {
@@ -320,6 +328,8 @@ export default function App() {
       if ((result.provenance.sheets?.length ?? 0) > 1 && result.provenance.sheet) {
         nextSettings.sheet = result.provenance.sheet;
       }
+      const effectiveIgnored = schema?.ignored_warnings ?? (fresh ? used?.ignored_warnings : ignoredWarnings) ?? [];
+      if (effectiveIgnored.length) nextSettings.ignored_warnings = effectiveIgnored;
       const effectiveGroup =
         schema?.group_by === null
           ? undefined
@@ -381,6 +391,7 @@ export default function App() {
       setColumnTypes(result.columns.map((item) => (item.type_overridden ? item.type : "auto")));
       setSelected(result.columns.find((c) => c.type === "numeric")?.name ?? result.columns[0].name);
       setRestored(false);
+      setIgnoredWarnings(result.provenance.ignored_warnings ?? []);
       setPage(0);
       setTab("Overview");
       setSnapshotInfo(snapshot.saved_at);
@@ -436,6 +447,16 @@ export default function App() {
       setBusy(false);
     }
   }
+  function rerun(extra: SchemaOptions) {
+    if (!lastFile || !data) return;
+    void upload(lastFile, data.header.used ? "present" : "absent", {
+      column_names: columnNames,
+      type_overrides: Object.fromEntries(
+        columnNames.flatMap((name, index) => (columnTypes[index] === "auto" ? [] : [[name, columnTypes[index]]])),
+      ),
+      ...extra,
+    });
+  }
   function clearDataset() {
     setData(null);
     setOther(null);
@@ -446,6 +467,7 @@ export default function App() {
     setGroupBy({ by: "", measure: "" });
     setMarkerText("");
     setYearEra("");
+    setIgnoredWarnings([]);
     setFollowUps({});
     setSheetOverview([]);
     setSnapshotInfo("");
@@ -764,7 +786,50 @@ export default function App() {
                       )}
                     </section>
                   )}
-                  <ExecutiveBrief data={data} />
+                  {(data.header.repaired?.length ?? 0) > 0 || (data.header.blank_columns_removed ?? 0) > 0 || (data.provenance.blank_rows_skipped ?? 0) > 0 ? (
+                    <section className="header-notice" role="status">
+                      <CircleAlert size={20} />
+                      <div>
+                        <strong>{t("The file was tidied before checking")}</strong>
+                        <p>
+                          {[
+                            (data.header.blank_columns_removed ?? 0) > 0
+                              ? tf("{count} empty column(s) at the end were ignored.", { count: data.header.blank_columns_removed ?? 0 })
+                              : "",
+                            data.header.repaired?.length
+                              ? tf("Column names fixed: {names}.", {
+                                  names: data.header.repaired.map((item) => `${item.from || t("(blank)")} → ${item.to}`).join(", "),
+                                })
+                              : "",
+                            (data.provenance.blank_rows_skipped ?? 0) > 0
+                              ? tf("{count} empty row(s) were skipped; row numbers still match your file.", { count: data.provenance.blank_rows_skipped })
+                              : "",
+                          ]
+                            .filter(Boolean)
+                            .join(" ")}
+                        </p>
+                      </div>
+                    </section>
+                  ) : null}
+                  <ExecutiveBrief
+                    data={data}
+                    busy={busy}
+                    canIgnore={Boolean(lastFile)}
+                    onIgnore={(code) => {
+                      const next = Array.from(new Set([...ignoredWarnings, code]));
+                      setIgnoredWarnings(next);
+                      rerun({ ignored_warnings: next });
+                    }}
+                    onRestore={() => {
+                      setIgnoredWarnings([]);
+                      rerun({ ignored_warnings: [] });
+                    }}
+                  />
+                  <SendCheck
+                    data={data}
+                    onGo={(name) => setTab(name)}
+                    onExportRows={() => downloadProblemRowsXlsx(data)}
+                  />
                   {data.provenance.sheets && data.provenance.sheets.length > 1 && (
                     <section className="header-notice" role="status">
                       <FileSpreadsheet size={20} />
@@ -1346,7 +1411,19 @@ function SchemaSetup({
     </details>
   );
 }
-function ExecutiveBrief({ data }: { data: Analysis }) {
+function ExecutiveBrief({
+  data,
+  busy,
+  canIgnore,
+  onIgnore,
+  onRestore,
+}: {
+  data: Analysis;
+  busy: boolean;
+  canIgnore: boolean;
+  onIgnore: (code: string) => void;
+  onRestore: () => void;
+}) {
   const executive = getLanguage() === "th" ? data.executive.thai : data.executive;
   const tone =
     data.executive.status === "Action required"
@@ -1383,6 +1460,11 @@ function ExecutiveBrief({ data }: { data: Analysis }) {
                 <small>
                   <strong>{t("Next:")}</strong> {issue.recommendation}
                 </small>
+                {issue.code && canIgnore && (
+                  <button className="text-button ignore-warning" disabled={busy} onClick={() => onIgnore(issue.code as string)}>
+                    {t("Ignore this warning")}
+                  </button>
+                )}
               </div>
             </article>
           ))}
@@ -1390,6 +1472,16 @@ function ExecutiveBrief({ data }: { data: Analysis }) {
       ) : (
         <p className="no-issues">
           <Check size={17} />{t("No supported structural issues detected.")}</p>
+      )}
+      {(data.provenance.ignored_warnings ?? []).length > 0 && (
+        <p className="signal">
+          {tf("{count} warning(s) ignored.", { count: data.provenance.ignored_warnings.length })}{" "}
+          {canIgnore && (
+            <button className="text-button" disabled={busy} onClick={onRestore}>
+              {t("Show them again")}
+            </button>
+          )}
+        </p>
       )}
       {executive.signals.map((signal) => (
         <p className="signal" key={signal}>

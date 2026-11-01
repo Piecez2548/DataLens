@@ -472,3 +472,51 @@ test("flags spelling variants, negative amounts and future dates before sending"
   await page.getByRole("navigation", { name: "Dataset views" }).getByRole("button", { name: "Issues" }).click();
   await expect(page.getByRole("tab", { name: /Spelling variants/ })).toBeVisible();
 });
+
+test("the Before you send checklist answers whether a file can go out", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel(/I am allowed to analyze this file/).check();
+  await page.getByLabel("Upload CSV file").setInputFiles(messyCsv);
+  const panel = page.getByRole("region", { name: "Before you send" });
+  await expect(panel.getByText("Personal data")).toBeVisible();
+  await expect(panel.getByText("2 empty cells")).toBeVisible();
+  await expect(panel.getByRole("button", { name: /Export rows to fix/ })).toBeVisible();
+});
+
+test("a warning can be ignored, comes back on request, and is remembered for the file name", async ({ page }) => {
+  const nl = String.fromCharCode(10);
+  const file = {
+    name: "refunds.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from(["id,amount", "1,100", "2,-20", "3,50"].join(nl) + nl),
+  };
+  await page.goto("/");
+  await page.getByLabel(/I am allowed to analyze this file/).check();
+  await page.getByLabel("Upload CSV file").setInputFiles(file);
+  await expect(page.getByRole("heading", { name: "Check before sending" })).toBeVisible();
+  await page.getByRole("button", { name: "Ignore this warning" }).click();
+  await expect(page.getByRole("heading", { name: "Ready to send" })).toBeVisible();
+  await expect(page.getByText("1 warning(s) ignored.")).toBeVisible();
+
+  await page.getByRole("button", { name: "Clear dataset" }).click();
+  await page.getByLabel(/I am allowed to analyze this file/).check();
+  await page.getByLabel("Upload CSV file").setInputFiles(file);
+  await expect(page.getByRole("heading", { name: "Ready to send" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Show them again" }).click();
+  await expect(page.getByRole("heading", { name: "Check before sending" })).toBeVisible();
+});
+
+test("tidies exported files with an empty trailing column and repeated names", async ({ page }) => {
+  const nl = String.fromCharCode(10);
+  await page.goto("/");
+  await page.getByLabel(/I am allowed to analyze this file/).check();
+  await page.getByLabel("Upload CSV file").setInputFiles({
+    name: "export.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from(["id,total,total,", "1,2,3,", "", "4,5,6,"].join(nl) + nl),
+  });
+  await expect(page.getByText("The file was tidied before checking")).toBeVisible();
+  await expect(page.getByText(/total → total_2/)).toBeVisible();
+  await expect(page.getByText("2 rows · 3 columns")).toBeVisible();
+});

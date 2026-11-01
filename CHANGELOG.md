@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Found by testing with thousands of simulated files and fixed: a blank line inside a table made the whole file fail; headers with a trailing comma, an empty name or a repeated name were refused (now tidied, with a notice); fully empty rows (common at the end of Excel exports) counted as missing cells; a blank line in a one-column file failed; files with old-Mac CR line endings failed; a damaged Excel sheet could produce a server error instead of a message; 9-digit codes were mistaken for phone numbers while +66 numbers were missed.
+- Email columns are reported as personal data.
+- Warnings that depend on column names (negative amounts, future dates, spelling variants, Excel date numbers, emails) can be ignored per file name; the choice is remembered in the browser and shown with a "show them again" link.
+- "Before you send" checklist at the top of the overview: personal data, missing values, repeated rows, wrong values and business rules, with a link to where and the rows-to-fix export.
+
 - New findings: values spelled differently only by capitals or spacing ("Bangkok" / "bangkok "), future dates in columns named like past events, negative values in amount/price/quantity columns; type-conflict findings now name example values.
 - Cell limit raised to 4,000,000 after measuring 2,000,000 cells at about 17 s on the hosted service. The "rows to fix" Excel has a wider "What to fix" column.
 

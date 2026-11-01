@@ -19,6 +19,7 @@ DataLens checks xlsx, csv and json data before you send it to someone else: it s
 - Transparent Completeness, Consistency, Uniqueness, Validity, and Overall scores.
 - Thai/English interface and executive brief; JSON, Excel .xlsx (any sheet) and CSV input; located issue lists exportable as CSV/JSON; user-defined missing markers, Thai national ID/phone personal-data flags, records-over-time chart, two-file comparison, and browser-local rule templates.
 - Per-column required, allowed-value, minimum, and maximum business rules.
+- Tested with simulated files that have known, injected problems (see docs/TESTING.md): every injected problem is located at the right row, clean files pass, and damaged files fail with a message.
 - "Export rows to fix": the original rows that have problems, with what to fix, as Excel. A copy of the file without detected personal-data columns can be downloaded as CSV. A saved snapshot can be used as the comparison baseline.
 - A "ready to send" verdict, a shareable data-check summary (HTML, print or save as PDF) and saved snapshots (`.datalens.json`).
 - SHA-256 source fingerprint, deterministic method version, and no-generated-values declaration.

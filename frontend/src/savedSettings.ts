@@ -8,6 +8,7 @@ export type SavedSettings = {
   missing_markers?: string[];
   sheet?: string;
   group_by?: { by: string; measure?: string };
+  ignored_warnings?: string[];
 };
 
 const STORAGE_KEY = "datalens.settings";

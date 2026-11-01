@@ -28,7 +28,7 @@ def test_mixed_types_and_validity_are_distinct():
     assert result["columns"][0]["stats"]["count"] == 3
 
 
-@pytest.mark.parametrize("content", [b"", b"a\n", b"a,a\n1,2", b"a,b\n1,2,3", b"a\n\xff", b"a\n\x00"])
+@pytest.mark.parametrize("content", [b"", b"a\n", b"a,b\n1,2,3", b"a\n\xff", b"a\n\x00"])
 def test_reject_bad_csv(content):
     with pytest.raises(ValueError):
         analyze(content, "bad.csv")
@@ -144,6 +144,7 @@ def test_provenance_fingerprints_the_exact_input_without_generating_values():
         "sha256": "159f8bae5fa563fb61b540de391850552f9fe1d188273b1ca9ce182e4cbf4a26",
         "input_bytes": len(content),
         "file_rows": 3,
+        "blank_rows_skipped": 0,
         "analyzed_rows": 2,
         "preview_rows": 2,
         "method_version": "0.7.1",
@@ -156,6 +157,7 @@ def test_provenance_fingerprints_the_exact_input_without_generating_values():
         "date_order_ambiguous": False,
         "two_digit_years": 0,
         "year_era": None,
+        "ignored_warnings": [],
         "encoding": "utf-8",
         "delimiter": "comma",
         "missing_markers": [],
@@ -321,9 +323,31 @@ def test_numeric_rule_rejects_boolean_and_inverted_range():
         analyze(b"amount\n10\n", "rules.csv", business_rules={"amount": {"min": 20, "max": 10}})
 
 
-def test_blank_physical_record_is_not_silently_discarded():
-    with pytest.raises(ValueError, match="same number of fields"):
-        analyze(b"value\n1\n\n2\n", "blank-row.csv", "present")
+def test_blank_line_in_a_one_column_file_is_counted_as_a_missing_value():
+    result = analyze(b"value\n1\n\n2\n\n\n", "blank-row.csv", "present")
+    assert result["rows"] == 3
+    assert result["missing"] == 1
+
+
+def test_separator_lines_and_empty_rows_in_a_table_are_skipped_but_row_numbers_stay():
+    result = analyze(b"id,v\n1,\n\n,\n2,\n3,9\n", "gaps.csv", "present")
+    assert result["rows"] == 3
+    assert result["provenance"]["blank_rows_skipped"] == 2
+    rows = [e["row"] for e in result["issue_samples"]["kinds"]["missing"]["examples"]]
+    assert rows == [2, 5]
+
+
+def test_headers_are_repaired_instead_of_refusing_the_file():
+    trailing = analyze(b"id,v,\n1,2,\n3,4,\n", "t.csv")
+    assert [c["name"] for c in trailing["columns"]] == ["id", "v"]
+    assert trailing["header"]["blank_columns_removed"] == 1
+    renamed = analyze(b"id,total,total,\n1,2,3,x\n4,5,6,y\n", "r.csv")
+    assert [c["name"] for c in renamed["columns"]] == ["id", "total", "total_2", "column_4"]
+    assert [item["to"] for item in renamed["header"]["repaired"]] == ["total_2", "column_4"]
+
+
+def test_lone_carriage_return_line_endings_are_read():
+    assert analyze(b"id,v\r1,2\r3,4\r", "mac.csv")["rows"] == 2
 
 
 def _workbook(rows, sheet_title="Data"):
@@ -742,3 +766,21 @@ def test_spelling_variants_are_flagged_by_case_and_spacing_only():
     assert any("spelled differently" in i["title"] for i in result["executive"]["issues"])
     same = analyze(b"id,city\n1,Bangkok\n2,Chiang Mai\n3,Bangkok\n", "s.csv")
     assert "variant" not in same["issue_samples"]["kinds"]
+
+
+def test_ignored_warnings_leave_the_verdict_and_findings_untouched_by_them():
+    content = b"id,amount\n1,10\n2,-5\n3,20\n"
+    base = analyze(content, "r.csv")
+    code = next(i["code"] for i in base["executive"]["issues"] if "negative" in i["title"])
+    assert code == "negative_amount:amount"
+    assert base["executive"]["status"] == "Review needed"
+    quiet = analyze(content, "r.csv", ignored_warnings=[code])
+    assert quiet["executive"]["status"] == "Ready for exploration"
+    assert quiet["provenance"]["ignored_warnings"] == [code]
+    with pytest.raises(ValueError, match="Ignored warnings"):
+        analyze(content, "r.csv", ignored_warnings="all")
+
+
+def test_core_findings_cannot_be_ignored():
+    result = analyze(b"id,team\n1,a\n2,\n", "m.csv", ignored_warnings=["missing", "everything"])
+    assert any("missing" in item["title"] for item in result["executive"]["issues"])

@@ -14,6 +14,7 @@ Uploaded file bytes (CSV, Excel, JSON), derived metrics and previews, exported i
 - No-store responses, no application persistence, and a restrictive browser security policy reduce unintended retention and content injection risk.
 
 - A snapshot (`.datalens.json`) is created in the browser and opened in the browser; nothing is stored on the server. Its content is untrusted on opening: the shape is checked, text fields are length-limited and everything is rendered as text. A snapshot can be edited by anyone who holds it, so it is a convenience for sharing, not evidence; approval needs the original file.
+- Ignored warnings are codes chosen by the user (at most 50, 120 characters each) sent with the analysis request and kept in the browser; they only hide named, column-based warnings from the verdict and never affect the located issue lists.
 - Follow-up owners, dates and notes and remembered per-file settings stay in the browser (memory, snapshot files and `localStorage`); remembered settings hold choices only, never file contents.
 
 ## Residual risks

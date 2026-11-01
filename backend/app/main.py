@@ -104,6 +104,7 @@ async def upload(
             schema_config.get("business_key"),
             schema_config.get("group_by"),
             schema_config.get("year_era"),
+            schema_config.get("ignored_warnings"),
         )
         return result
     except (TypeError, ValueError) as exc:

@@ -27,6 +27,8 @@ export interface Analysis {
     used: boolean;
     generated_names: boolean;
     configured_names: boolean;
+    repaired?: { from: string; to: string; position: number }[];
+    blank_columns_removed?: number;
   };
   executive: {
     status: "Ready for exploration" | "Review needed" | "Action required";
@@ -39,6 +41,7 @@ export interface Analysis {
       title: string;
       detail: string;
       recommendation: string;
+      code?: string | null;
     }[];
     scope_note: string;
     signals: string[];
@@ -49,6 +52,7 @@ export interface Analysis {
         title: string;
         detail: string;
         recommendation: string;
+        code?: string | null;
       }[];
       scope_note: string;
       signals: string[];
@@ -137,6 +141,8 @@ export interface Analysis {
     date_order_ambiguous: boolean;
     two_digit_years: number;
     year_era: "be" | "ce" | null;
+    ignored_warnings: string[];
+    blank_rows_skipped: number;
     encoding: string;
     delimiter: string | null;
     missing_markers: string[];

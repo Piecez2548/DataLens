@@ -169,7 +169,9 @@ AMOUNT_NAME = re.compile(r"amount|price|total|qty|quantity|revenue|cost|salary|�
 PAST_DATE_NAME = re.compile(r"order|created|signup|sign_up|birth|dob|joined|sent|paid|invoice|delivered|สั่ง|เกิด|สร้าง|ออก|ส่ง", re.IGNORECASE)
 SERIAL_DATE_NAME = re.compile(r"date|time|due|deadline|created|updated|birth|dob|วันที่|วัน|กำหนด", re.IGNORECASE)
 THAI_ID_PATTERN = re.compile(r"\d{13}")
-THAI_PHONE_PATTERN = re.compile(r"0[2-9]\d{7,8}")
+THAI_MOBILE_PATTERN = re.compile(r"0[689]\d{8}")
+THAI_LANDLINE_PATTERN = re.compile(r"0[2-57]\d{7}")
+THAI_PHONE_NAME_HINTS = ("phone", "tel", "mobile", "contact", "เบอร์", "โทร")
 THAI_ID_NAME_HINTS = ("national_id", "citizen", "id_card", "idcard", "thai_id", "เลขบัตร", "บัตรประชาชน")
 
 
@@ -181,6 +183,19 @@ def _thai_id_valid(value: str) -> bool:
     return (11 - total % 11) % 10 == int(value[12])
 
 
+def dtype_is_email_candidate(values: pd.Series, email_hits: int) -> bool:
+    """Most values are email addresses (the column name alone is not enough to call it personal data)."""
+    return bool(values.size) and email_hits / values.size >= 0.5
+
+
+def _compact_number(value: str) -> str:
+    """Strip spaces, dashes and brackets; +66 prefixes become the local leading 0."""
+    text = re.sub(r"[\s\-().]", "", value)
+    if text.startswith("+66") and len(text) in {11, 12}:
+        return "0" + text[3:]
+    return text
+
+
 def _detect_personal_pattern(name: str, values: pd.Series) -> str | None:
     """Flag columns that look like Thai national IDs or phone numbers (personal data)."""
     if not len(values):
@@ -189,15 +204,19 @@ def _detect_personal_pattern(name: str, values: pd.Series) -> str | None:
     counts = values.value_counts()
     weights = counts.to_numpy()
     total = weights.sum()
-    compact = [re.sub(r"[\s-]", "", value) for value in counts.index]
+    compact = [_compact_number(value) for value in counts.index]
     id_shaped = np.array([bool(THAI_ID_PATTERN.fullmatch(value)) for value in compact])
     if weights[id_shaped].sum() / total >= 0.8:
         valid = np.array([_thai_id_valid(value) for value in compact])
         valid_share = weights[id_shaped & valid].sum() / weights[id_shaped].sum()
         if valid_share >= 0.5 or any(hint in lowered for hint in THAI_ID_NAME_HINTS):
             return "thai_national_id"
-    phone_shaped = np.array([bool(THAI_PHONE_PATTERN.fullmatch(value)) for value in compact])
-    if weights[phone_shaped].sum() / total >= 0.8:
+    mobile = np.array([bool(THAI_MOBILE_PATTERN.fullmatch(value)) for value in compact])
+    landline = np.array([bool(THAI_LANDLINE_PATTERN.fullmatch(value)) for value in compact])
+    # Mobile numbers are distinctive; 9-digit landlines look like ordinary codes, so they also need a telling column name.
+    if weights[mobile].sum() / total >= 0.8:
+        return "thai_phone"
+    if weights[mobile | landline].sum() / total >= 0.8 and any(hint in lowered for hint in THAI_PHONE_NAME_HINTS):
         return "thai_phone"
     return None
 
@@ -272,6 +291,10 @@ def _xlsx_to_csv_text(content: bytes, sheet: str | None = None) -> tuple[str, st
         for row in rows:
             writer.writerow(row + [""] * (width - len(row)))
         return buffer.getvalue(), worksheet.title, names
+    except ValueError:
+        raise
+    except Exception as exc:  # a damaged sheet part fails while rows are read, with several unrelated types
+        raise ValueError("The Excel workbook could not be read.") from exc
     finally:
         workbook.close()
 
@@ -431,7 +454,7 @@ MAX_PROBLEM_ROWS = 500
 MAX_PROBLEM_CELLS = 60_000
 
 
-def _problem_rows(frame: pd.DataFrame, positions: set[int], samples: dict, row_offset: int) -> dict:
+def _problem_rows(frame: pd.DataFrame, positions: set[int], samples: dict, row_numbers: list[int], row_shift: int) -> dict:
     """The original rows behind the located issues (lowest row numbers first), so they can be handed to whoever fixes them."""
     labels: dict[int, list[str]] = {}
     for kind, entry in samples.items():
@@ -448,8 +471,8 @@ def _problem_rows(frame: pd.DataFrame, positions: set[int], samples: dict, row_o
         "columns": list(frame.columns),
         "rows": [
             {
-                "row": position + row_offset,
-                "issues": labels.get(position + row_offset, []),
+                "row": row_numbers[position] + row_shift,
+                "issues": labels.get(row_numbers[position] + row_shift, []),
                 "values": [value[:120] for value in frame.iloc[position].tolist()],
             }
             for position in chosen
@@ -478,12 +501,19 @@ def _executive_summary(
     mismatch_examples: list[tuple[str, str, list[str]]],
     context_warnings: list[dict],
     variant_columns: list[tuple[str, int, str]],
+    email_columns: list[str],
+    ignored_warnings: list[str],
 ) -> dict:
     """Build the executive summary in English and Thai; the English `status` stays canonical for workflow checks."""
     issues = []
 
-    def add(severity, title, detail, recommendation):
-        issues.append({"severity": severity, "title": title, "detail": detail, "recommendation": recommendation})
+    def add(severity, title, detail, recommendation, code=None):
+        """`code` marks a warning the user may choose to ignore; ignored ones leave the verdict untouched."""
+        if code is not None and code in ignored_warnings:
+            return
+        issues.append(
+            {"severity": severity, "title": title, "detail": detail, "recommendation": recommendation, "code": code}
+        )
 
     if not header_detected:
         add(
@@ -629,6 +659,7 @@ def _executive_summary(
                     "คอลัมน์ที่ชื่อบ่งว่าเป็นเหตุการณ์ในอดีตมีวันที่หลังวันนี้",
                 ),
                 ("Check the year or the day/month order of these dates.", "ตรวจปีหรือลำดับวัน/เดือนของวันที่เหล่านี้"),
+                code=f"future_date:{warning['column']}",
             )
         else:
             add(
@@ -639,6 +670,7 @@ def _executive_summary(
                     "ยอดเงิน ราคา และจำนวนมักไม่ติดลบ รายการคืนเงินหรือการคีย์ผิดจะปรากฏแบบนี้",
                 ),
                 ("Confirm each one is intended (for example a refund) or correct it.", "ยืนยันว่าตั้งใจ (เช่น การคืนเงิน) หรือแก้ไข"),
+                code=f"negative_amount:{warning['column']}",
             )
     if variant_columns:
         names = ", ".join(name for name, _, _ in variant_columns[:3])
@@ -651,6 +683,21 @@ def _executive_summary(
                 f"ค่าที่ต่างกันเพียงตัวพิมพ์ใหญ่เล็กหรือช่องว่างจะถูกนับเป็นคนละกลุ่ม (เช่น {example})",
             ),
             ("Use one spelling for each value before grouping or sending.", "ใช้การสะกดเดียวกันสำหรับแต่ละค่าก่อนจัดกลุ่มหรือส่งต่อ"),
+            code="variants",
+        )
+    if email_columns:
+        add(
+            "medium",
+            (f"Email addresses found in {', '.join(email_columns[:3])}", f"พบที่อยู่อีเมลใน {', '.join(email_columns[:3])}"),
+            (
+                "Email addresses can identify a person, so they count as personal data.",
+                "ที่อยู่อีเมลระบุตัวบุคคลได้ จึงถือเป็นข้อมูลส่วนบุคคล",
+            ),
+            (
+                "Remove or mask the column unless the recipient is allowed to see it.",
+                "ลบหรือปิดบังคอลัมน์นี้ เว้นแต่ผู้รับมีสิทธิ์เห็น",
+            ),
+            code="emails",
         )
     if serial_date_columns:
         add(
@@ -664,6 +711,7 @@ def _executive_summary(
                 "In Excel, format the column as a date (or write it as YYYY-MM-DD) and upload again.",
                 "ใน Excel ให้จัดรูปแบบคอลัมน์เป็นวันที่ (หรือเขียนเป็น YYYY-MM-DD) แล้วอัปโหลดใหม่",
             ),
+            code="serial_dates",
         )
     high = sum(item["severity"] == "high" for item in issues)
     if high:
@@ -695,6 +743,7 @@ def _executive_summary(
                     "title": issue["title"][index],
                     "detail": issue["detail"][index],
                     "recommendation": issue["recommendation"][index],
+                    "code": issue["code"],
                 }
                 for issue in issues
             ],
@@ -730,6 +779,8 @@ def _read_text(content: bytes, filename: str, sheet: str | None) -> tuple[str, s
     text, encoding = _decode(content)
     if "\x00" in text:
         raise ValueError("The file contains binary data.")
+    if "\r" in text:  # old Mac files use a lone CR as the line ending
+        text = text.replace("\r\n", "\n").replace("\r", "\n")
     return text, None, None, encoding, _detect_delimiter(text), "csv"
 
 
@@ -747,8 +798,16 @@ def analyze(
     business_key: list[str] | None = None,
     group_by: dict | None = None,
     year_era: str | None = None,
+    ignored_warnings: list[str] | None = None,
 ) -> dict:
     text, sheet_name, sheet_names, encoding, delimiter, source_format = _read_text(content, filename, sheet)
+    ignored_warnings = ignored_warnings or []
+    if (
+        not isinstance(ignored_warnings, list)
+        or len(ignored_warnings) > 50
+        or not all(isinstance(item, str) and len(item) <= 120 for item in ignored_warnings)
+    ):
+        raise ValueError("Ignored warnings must be a list of short text codes.")
     markers = missing_markers or []
     if (
         not isinstance(markers, list)
@@ -783,12 +842,29 @@ def analyze(
                 raise ValueError("The header row must be a row number inside the file.")
             skipped = header_row - 1
             all_rows = all_rows[skipped:]
+        # In a table with several columns a line with no fields at all is a separator, not a record; drop it but
+        # remember each remaining row's line number. (In a one-column file a blank line is a missing value.)
+        first_fields = next((len(row) for row in all_rows if row), 0)
+        if first_fields <= 1:
+            while all_rows and not all_rows[-1]:
+                all_rows.pop()  # trailing blank lines are just the end of the file
+            all_rows = [row or [""] for row in all_rows]
+        has_content = sum(1 for row in all_rows if any(cell.strip() for cell in row)) > 1
+        # Rows with no fields, or only empty fields, between real rows are separators; keep their line numbers out of the way.
+        keep = [
+            index
+            for index, row in enumerate(all_rows)
+            if index == 0 or any(cell.strip() for cell in row) or (first_fields <= 1) or not has_content
+        ]
+        line_numbers = [index + 1 + skipped for index in keep]
+        blank_rows = len(all_rows) - len(keep)
+        all_rows = [all_rows[index] for index in keep]
         if not all_rows:
             raise ValueError("The CSV is empty or malformed.")
         width = len(all_rows[0])
         if width > MAX_COLUMNS:
             raise ValueError("Maximum 100 columns supported.")
-        uneven = [(index + 1 + skipped, len(row)) for index, row in enumerate(all_rows) if len(row) != width]
+        uneven = [(line_numbers[index], len(row)) for index, row in enumerate(all_rows) if len(row) != width]
         if uneven:
             examples = ", ".join(f"row {number} has {count}" for number, count in uneven[:5])
             more = f" (+{len(uneven) - 5} more)" if len(uneven) > 5 else ""
@@ -801,9 +877,11 @@ def analyze(
         if use_header:
             headers = [h.strip() for h in all_rows[0]]
             rows = all_rows[1:]
+            row_numbers = line_numbers[1:]
         else:
             headers = [f"column_{index + 1}" for index in range(width)]
             rows = all_rows
+            row_numbers = line_numbers
         if column_names is not None:
             if not isinstance(column_names, list) or not all(isinstance(name, str) for name in column_names):
                 raise ValueError("Column names must be a list of text values.")
@@ -812,6 +890,31 @@ def analyze(
             headers = [name.strip() for name in column_names]
             if any(not name for name in headers):
                 raise ValueError("Column names cannot be empty.")
+        repaired: list[dict] = []
+        blank_columns_removed = 0
+        if use_header and column_names is None:
+            # Exports often end every line with a delimiter or leave a header cell empty: drop empty trailing columns,
+            # name the others, and make repeated names unique rather than refusing the file.
+            empty = [
+                not headers[i] and not any(row[i].strip() for row in rows) for i in range(width)
+            ]
+            if any(empty) and not all(empty):
+                kept = [i for i in range(width) if not empty[i]]
+                blank_columns_removed = width - len(kept)
+                headers = [headers[i] for i in kept]
+                rows = [[row[i] for i in kept] for row in rows]
+                width = len(kept)
+            seen: set[str] = set()
+            for index, name in enumerate(headers):
+                new = name or f"column_{index + 1}"
+                base, counter = new, 2
+                while new in seen:
+                    new = f"{base}_{counter}"
+                    counter += 1
+                if new != name:
+                    repaired.append({"from": name, "to": new, "position": index + 1})
+                seen.add(new)
+                headers[index] = new
         if use_header and (not headers or any(not h for h in headers)):
             raise ValueError("Every column needs a non-empty header.")
         if len(set(headers)) != len(headers):
@@ -863,8 +966,10 @@ def analyze(
     mismatch_examples: list[tuple[str, str, list[str]]] = []
     context_warnings: list[dict] = []
     variant_columns: list[tuple[str, int, str]] = []
+    email_columns: list[str] = []
     today = datetime.datetime.now(tz=datetime.UTC).date()
-    row_offset = 1 if source_format == "json" else (2 if use_header else 1) + skipped
+    # JSON records have no header line, so they are numbered from 1.
+    row_shift = -1 if source_format == "json" else 0
     samples: dict[str, dict] = {}
     problem_positions: set[int] = set()
 
@@ -881,7 +986,7 @@ def analyze(
                 cell = normalized.at[position, column]
                 value = None if cell is None or pd.isna(cell) else str(cell)
             entry["examples"].append(
-                {"row": int(position) + row_offset, "column": column, "value": value[:80] if value else value, "reason": reason}
+                {"row": row_numbers[int(position)] + row_shift, "column": column, "value": value[:80] if value else value, "reason": reason}
             )
 
     mismatches = invalid = checked = 0
@@ -907,6 +1012,8 @@ def analyze(
             inferred = "email"
         if normalized_name in {"id", "customer_id", "record_id", "user_id"} or normalized_name.endswith("_id"):
             inferred = "identifier"
+        if dtype_is_email_candidate(values, email_hits):
+            email_columns.append(name)
         pattern = _detect_personal_pattern(name, values)
         if pattern and name not in type_overrides:
             inferred = "identifier"
@@ -1052,10 +1159,10 @@ def analyze(
             key_values = tuple(keyed.loc[position])
             entry["examples"].append(
                 {
-                    "row": int(position) + row_offset,
+                    "row": row_numbers[int(position)] + row_shift,
                     "column": ", ".join(key_columns),
                     "value": " | ".join(key_values)[:80],
-                    "reason": f"Repeats a key first seen at row {first_seen[key_values] + row_offset}",
+                    "reason": f"Repeats a key first seen at row {row_numbers[first_seen[key_values]] + row_shift}",
                 }
             )
         key_summary = {
@@ -1205,6 +1312,8 @@ def analyze(
         mismatch_examples=mismatch_examples,
         context_warnings=context_warnings,
         variant_columns=variant_columns,
+        email_columns=email_columns,
+        ignored_warnings=ignored_warnings,
     )
     numeric_names = list(numeric)
     scatter = []
@@ -1226,6 +1335,8 @@ def analyze(
             "detected": detected_header,
             "used": use_header,
             "generated_names": not use_header and column_names is None,
+            "repaired": repaired,
+            "blank_columns_removed": blank_columns_removed,
             "configured_names": column_names is not None,
         },
         "executive": executive,
@@ -1233,7 +1344,7 @@ def analyze(
         "preview": normalized.head(100).where(normalized.head(100).notna(), None).to_dict("records"),
         "key_duplicates": key_summary,
         "group_summary": group_summary,
-        "problem_rows": _problem_rows(frame, problem_positions, samples, row_offset),
+        "problem_rows": _problem_rows(frame, problem_positions, samples, row_numbers, row_shift),
         "issue_samples": {
             "row_label": "record" if source_format == "json" else "row",
             "max_examples": MAX_SAMPLES,
@@ -1262,12 +1373,14 @@ def analyze(
             "sha256": hashlib.sha256(content).hexdigest(),
             "input_bytes": len(content),
             "file_rows": total_file_rows,
+            "blank_rows_skipped": blank_rows,
             "header_row": skipped + 1 if use_header else None,
             "header_row_suggestion": header_row_suggestion,
             "date_order": chosen_date_order,
             "date_order_ambiguous": date_order_ambiguous,
             "two_digit_years": two_digit_years,
             "year_era": year_era,
+            "ignored_warnings": ignored_warnings,
             "analyzed_rows": n,
             "preview_rows": min(n, 100),
             "method_version": "0.7.1",
