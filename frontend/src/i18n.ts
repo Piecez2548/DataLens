@@ -78,6 +78,7 @@ const th: Record<string, string> = {
   "Overall score": "คะแนนรวม",
   "Equal-weight mean of available dimensions.": "ค่าเฉลี่ยถ่วงน้ำหนักเท่ากันของมิติที่มี",
   Overview: "ภาพรวม",
+  "Tick the box above to enable the buttons.": "ติ๊กช่องด้านบนก่อนจึงจะกดปุ่มได้",
   "Follow-up for this issue type": "การติดตามสำหรับปัญหาประเภทนี้",
   "Owner": "ผู้รับผิดชอบ",
   "Due date": "กำหนดส่ง",

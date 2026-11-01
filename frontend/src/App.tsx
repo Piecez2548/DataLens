@@ -278,7 +278,7 @@ export default function App() {
             : { by: "", measure: "" },
         );
       }
-      if (fresh || schema?.sheet || schema?.header_row) {
+      if (fresh || schema?.header_row) {
         setSheetOverview([]);
       }
       if (fresh) {
@@ -375,6 +375,7 @@ export default function App() {
   function routeFile(file: File) {
     if (isSnapshotName(file.name)) void openSnapshot(file);
     else void upload(file);
+    if (input.current) input.current.value = "";
   }
   async function analyzeAllSheets() {
     const names = data?.provenance.sheets;
@@ -546,15 +547,17 @@ export default function App() {
               <h1>{t("Good insights start")}<br className="mobile-break" />{t("with good data.")}</h1>
               <p>{t("Understand your schema, spot gaps, and explore what matters.")}</p>
             </div>
-            <button
-              ref={uploadTrigger}
-              className="primary"
-              disabled={busy || !authorized}
-              onClick={() => input.current?.click()}
-            >
-              <Upload size={17} />
-              {busy ? t("Analyzing…") : t("Upload file")}
-            </button>
+            {data && (
+              <button
+                ref={uploadTrigger}
+                className="primary"
+                disabled={busy}
+                onClick={() => (authorized ? input.current?.click() : clearDataset())}
+              >
+                <Upload size={17} />
+                {t("Upload file")}
+              </button>
+            )}
           </div>
           <input
             ref={input}
@@ -620,20 +623,40 @@ export default function App() {
               }}
             >
               <div className="upload-icon">
-                <FileSpreadsheet size={34} />
+                <FileSpreadsheet size={26} />
               </div>
               <h2>{t("Your next discovery starts here")}</h2>
               <p>{t("Drop a CSV, Excel (.xlsx) or JSON file here to explore its quality and structure.")}</p>
-              <p>{t("Current release: use synthetic or confirmed non-personal data only. CSV bytes are sent to the analysis service and may be handled transiently by the hosting framework. DataLens does not intentionally persist the file.")}</p>
               <label className="authorization upload-authorization">
                 <input
                   type="checkbox"
                   checked={authorized}
                   onChange={(event) => setAuthorized(event.target.checked)}
                 />{t("I am allowed to analyze this file, and it contains no personal or sensitive data.")}</label>
+              <p className="privacy-note">{t("Current release: use synthetic or confirmed non-personal data only. CSV bytes are sent to the analysis service and may be handled transiently by the hosting framework. DataLens does not intentionally persist the file.")}</p>
+              <div className="upload-actions">
+                <label className="header-row-field">{t("Header row (optional)")}<input
+                    type="number"
+                    min={1}
+                    max={1000}
+                    value={headerRow}
+                    onChange={(event) => setHeaderRow(event.target.value)}
+                    placeholder="1"
+                    title={t("Use when column names start below a report title.")}
+                  />
+                </label>
+                <button
+                  className="primary"
+                  disabled={busy || !authorized}
+                  onClick={() => input.current?.click()}
+                >
+                  {busy ? t("Analyzing…") : t("Choose a CSV file")}
+                  <ArrowUpRight size={17} />
+                </button>
+              </div>
+              {!authorized && <small className="hint">{t("Tick the box above to enable the buttons.")}</small>}
               <div className="samples" role="group" aria-label={t("Try a sample")}>
                 <strong>{t("Try a sample")}</strong>
-                <span>{t("Fictional data made for this demo. Nothing of yours is uploaded.")}</span>
                 <div>
                   <button disabled={busy} onClick={() => void trySample("sales-th.csv", "text/csv")}>
                     {t("Thai sales (CSV)")}
@@ -649,35 +672,16 @@ export default function App() {
                   <button disabled={busy} onClick={() => void trySample("orders.json", "application/json")}>
                     {t("Orders records (JSON)")}
                   </button>
-                </div>
-              </div>
-              <div className="samples" role="group" aria-label={t("Open a saved snapshot")}>
-                <strong>{t("Received a snapshot?")}</strong>
-                <span>{t("Open a .datalens.json file someone saved to see their analysis. No upload to the analysis service is needed.")}</span>
-                <div>
-                  <button disabled={busy} onClick={() => snapshotInput.current?.click()}>
+                  <button
+                    className="quiet"
+                    disabled={busy}
+                    title={t("Open a .datalens.json file someone saved to see their analysis. No upload to the analysis service is needed.")}
+                    onClick={() => snapshotInput.current?.click()}
+                  >
                     {t("Open a saved snapshot")}
                   </button>
                 </div>
               </div>
-              <label className="header-row-field">{t("Header row (optional)")}<input
-                  type="number"
-                  min={1}
-                  max={1000}
-                  value={headerRow}
-                  onChange={(event) => setHeaderRow(event.target.value)}
-                  placeholder="1"
-                />
-                <small>{t("Use when column names start below a report title.")}</small>
-              </label>
-              <button
-                className="primary"
-                disabled={busy || !authorized}
-                onClick={() => input.current?.click()}
-              >
-                {busy ? t("Analyzing…") : t("Choose a CSV file")}
-                <ArrowUpRight size={17} />
-              </button>
               <small>
                 {tf("CSV (UTF-8, Thai Windows-874, UTF-16; comma, semicolon, tab or pipe), Excel .xlsx (choose any sheet) or JSON records · up to {mb} MB · 100,000 rows · 100 columns", { mb: MAX_UPLOAD_MB })}
               </small>
@@ -817,9 +821,11 @@ export default function App() {
                           <option key={name}>{name}</option>
                         ))}
                       </select>
-                      <button disabled={busy || !lastFile} onClick={() => void analyzeAllSheets()}>
-                        {t("Analyze all sheets")}
-                      </button>
+                      {!sheetOverview.length && (
+                        <button disabled={busy || !lastFile} onClick={() => void analyzeAllSheets()}>
+                          {t("Analyze all sheets")}
+                        </button>
+                      )}
                     </section>
                   )}
                   {sheetOverview.length > 0 && (

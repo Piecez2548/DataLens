@@ -376,4 +376,24 @@ test("shows every sheet of a workbook side by side", async ({ page }) => {
   await expect(table.getByRole("heading", { name: "All sheets" })).toBeVisible();
   await expect(table.getByRole("row")).toHaveCount(3);
   await expect(table.getByRole("cell", { name: "Orders", exact: true })).toBeVisible();
+
+  await page.getByLabel("Worksheet", { exact: true }).first().selectOption("Orders");
+  await expect(page.getByText("4 rows · 2 columns")).toBeVisible();
+  await expect(table.getByRole("row")).toHaveCount(3);
+});
+
+test("the Upload file button still works after opening a snapshot", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Orders records (JSON)" }).click();
+  await expect(page.getByText("25 rows · 6 columns")).toBeVisible();
+  const [snap] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: "Save snapshot" }).click(),
+  ]);
+  await snap.saveAs("test-results/again.datalens.json");
+  await page.getByRole("button", { name: "Clear dataset" }).click();
+  await page.getByLabel("Open a saved snapshot", { exact: true }).first().setInputFiles("test-results/again.datalens.json");
+  await expect(page.getByText("Opened from a saved snapshot")).toBeVisible();
+  await page.getByRole("button", { name: "Upload file" }).click();
+  await expect(page.getByRole("button", { name: "Choose a CSV file" })).toBeVisible();
 });
