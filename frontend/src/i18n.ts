@@ -78,6 +78,7 @@ const th: Record<string, string> = {
   "Overall score": "คะแนนรวม",
   "Equal-weight mean of available dimensions.": "ค่าเฉลี่ยถ่วงน้ำหนักเท่ากันของมิติที่มี",
   Overview: "ภาพรวม",
+  "CSV, Excel (.xlsx) or JSON · up to {mb} MB · 100,000 rows · 100 columns": "CSV, Excel (.xlsx) หรือ JSON · ไม่เกิน {mb} MB · 100,000 แถว · 100 คอลัมน์",
   "Tick the box above to enable the buttons.": "ติ๊กช่องด้านบนก่อนจึงจะกดปุ่มได้",
   "Follow-up for this issue type": "การติดตามสำหรับปัญหาประเภทนี้",
   "Owner": "ผู้รับผิดชอบ",

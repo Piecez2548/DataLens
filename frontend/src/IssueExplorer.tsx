@@ -1,6 +1,6 @@
 import { t, tf, tReason } from "./i18n";
 import { useState } from "react";
-import { Download } from "lucide-react";
+import { Upload } from "lucide-react";
 import type { Analysis, FollowUp, FollowUps } from "./types";
 import {
   downloadIssuesCsv,
@@ -53,11 +53,11 @@ export default function IssueExplorer({
         </div>
         <div className="file-actions">
           <button className="report-button" onClick={() => downloadIssuesCsv(data)}>
-            <Download size={15} />{t("Export issue list (CSV)")}</button>
+            <Upload size={15} />{t("Export issue list (CSV)")}</button>
           <button className="report-button" onClick={() => downloadIssuesXlsx(data, followUps)}>
-            <Download size={15} />{t("Export issue list (Excel)")}</button>
+            <Upload size={15} />{t("Export issue list (Excel)")}</button>
           <button className="report-button" onClick={() => downloadIssuesJson(data, followUps)}>
-            <Download size={15} />{t("Export (JSON)")}</button>
+            <Upload size={15} />{t("Export (JSON)")}</button>
         </div>
       </div>
       <div className="issue-kinds" role="tablist" aria-label="Issue type">

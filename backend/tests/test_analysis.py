@@ -564,10 +564,16 @@ def test_date_order_is_inferred_from_proof_and_flagged_when_ambiguous():
         analyze(b"d\n1\n", "c.csv", date_order="ymd")
 
 
+RAGGED = b"a,b\n1,2,3\n4,5\n"
+
+
 def test_header_row_skips_report_titles():
     content = b"Sales report\n\nregion,total\nN,1\nS,2\n"
     with pytest.raises(ValueError, match="set the header row"):
-        analyze(content, "report.csv")
+        analyze(RAGGED, "ragged.csv")
+    automatic = analyze(content, "report.csv")
+    assert automatic["provenance"]["header_row"] == 3
+    assert automatic["rows"] == 2
     result = analyze(content, "report.csv", header_row=3)
     assert [c["name"] for c in result["columns"]] == ["region", "total"]
     assert result["rows"] == 2

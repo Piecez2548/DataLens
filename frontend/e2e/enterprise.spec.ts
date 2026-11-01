@@ -195,7 +195,6 @@ test("analyzes a JSON file of records", async ({ page }) => {
 test("reads a report-style file, summarizes by group and flags repeated keys", async ({ page }) => {
   await page.goto("/");
   await page.getByLabel(/I am allowed to analyze this file/).check();
-  await page.getByLabel(/Header row/).fill("3");
   await page.getByLabel("Upload CSV file").setInputFiles({
     name: "report.csv",
     mimeType: "text/csv",
@@ -312,7 +311,7 @@ test("follow-ups and a saved snapshot reach someone who only has the snapshot fi
   await snapshot.saveAs("test-results/messy.datalens.json");
 
   await page.getByRole("button", { name: "Clear dataset" }).click();
-  await page.getByLabel("Open a saved snapshot", { exact: true }).first().setInputFiles("test-results/messy.datalens.json");
+  await page.getByLabel("Upload CSV file").setInputFiles("test-results/messy.datalens.json");
   await expect(page.getByText("Opened from a saved snapshot")).toBeVisible();
   await expect(page.getByText("4 rows · 3 columns")).toBeVisible();
   await views.getByRole("button", { name: "Issues" }).click();
@@ -322,7 +321,7 @@ test("follow-ups and a saved snapshot reach someone who only has the snapshot fi
 
 test("rejects a file that is not a snapshot", async ({ page }) => {
   await page.goto("/");
-  await page.getByLabel("Open a saved snapshot", { exact: true }).first().setInputFiles({
+  await page.getByLabel("Upload CSV file").setInputFiles({
     name: "other.datalens.json",
     mimeType: "application/json",
     buffer: Buffer.from('{"hello": 1}'),
@@ -334,19 +333,22 @@ test("remembers the choices made for a file name in this browser", async ({ page
   const report = {
     name: "monthly.csv",
     mimeType: "text/csv",
-    buffer: Buffer.from("Monthly report,\nprepared by finance,\npo,team,amount\nA1,North,10\nA2,South,20\n"),
+    buffer: Buffer.from("po,team,amount" + String.fromCharCode(10) + "A1,North,10" + String.fromCharCode(10) + "A1,South,20" + String.fromCharCode(10)),
   };
   await page.goto("/");
   await page.getByLabel(/I am allowed to analyze this file/).check();
-  await page.getByLabel(/Header row/).fill("3");
   await page.getByLabel("Upload CSV file").setInputFiles(report);
   await expect(page.getByText("2 rows · 3 columns")).toBeVisible();
+  await page.getByText("Dataset setup", { exact: true }).click();
+  await page.locator(".key-options label").filter({ hasText: "po" }).getByRole("checkbox").check();
+  await page.getByRole("button", { name: "Apply dataset setup" }).click();
+  await expect(page.getByText(/1 rows repeat the business key/)).toBeVisible();
 
   await page.getByRole("button", { name: "Clear dataset" }).click();
   await page.getByLabel(/I am allowed to analyze this file/).check();
   await page.getByLabel("Upload CSV file").setInputFiles(report);
-  await expect(page.getByText("2 rows · 3 columns")).toBeVisible();
   await expect(page.getByText("Settings from last time were applied")).toBeVisible();
+  await expect(page.getByText(/1 rows repeat the business key/)).toBeVisible();
 
   await page.getByRole("button", { name: "Don't remember these" }).click();
   await expect(page.getByText("Settings from last time were applied")).toBeHidden();
@@ -392,7 +394,7 @@ test("the Upload file button still works after opening a snapshot", async ({ pag
   ]);
   await snap.saveAs("test-results/again.datalens.json");
   await page.getByRole("button", { name: "Clear dataset" }).click();
-  await page.getByLabel("Open a saved snapshot", { exact: true }).first().setInputFiles("test-results/again.datalens.json");
+  await page.getByLabel("Upload CSV file").setInputFiles("test-results/again.datalens.json");
   await expect(page.getByText("Opened from a saved snapshot")).toBeVisible();
   await page.getByRole("button", { name: "Upload file" }).click();
   await expect(page.getByRole("button", { name: "Choose a CSV file" })).toBeVisible();

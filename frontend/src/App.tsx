@@ -7,7 +7,7 @@ import {
   Check,
   CircleAlert,
   Database,
-  Download,
+  Printer,
   FileSpreadsheet,
   Moon,
   Sun,
@@ -129,7 +129,6 @@ export default function App() {
   const [snapshotInfo, setSnapshotInfo] = useState("");
   const [restored, setRestored] = useState(false);
   const [other, setOther] = useState<Analysis | null>(null);
-  const snapshotInput = useRef<HTMLInputElement>(null);
   const compareInput = useRef<HTMLInputElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const uploadTrigger = useRef<HTMLButtonElement>(null);
@@ -369,7 +368,7 @@ export default function App() {
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "This is not a DataLens snapshot file.");
     } finally {
-      if (snapshotInput.current) snapshotInput.current.value = "";
+      if (input.current) input.current.value = "";
     }
   }
   function routeFile(file: File) {
@@ -571,17 +570,6 @@ export default function App() {
             }}
           />
           <input
-            ref={snapshotInput}
-            type="file"
-            accept=".json,application/json"
-            className="sr-only"
-            aria-label={t("Open a saved snapshot")}
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) void openSnapshot(f);
-            }}
-          />
-          <input
             ref={compareInput}
             type="file"
             accept=".csv,.xlsx,.json,.jsonl,.ndjson,text/csv,application/json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -635,16 +623,6 @@ export default function App() {
                 />{t("I am allowed to analyze this file, and it contains no personal or sensitive data.")}</label>
               <p className="privacy-note">{t("Current release: use synthetic or confirmed non-personal data only. CSV bytes are sent to the analysis service and may be handled transiently by the hosting framework. DataLens does not intentionally persist the file.")}</p>
               <div className="upload-actions">
-                <label className="header-row-field">{t("Header row (optional)")}<input
-                    type="number"
-                    min={1}
-                    max={1000}
-                    value={headerRow}
-                    onChange={(event) => setHeaderRow(event.target.value)}
-                    placeholder="1"
-                    title={t("Use when column names start below a report title.")}
-                  />
-                </label>
                 <button
                   className="primary"
                   disabled={busy || !authorized}
@@ -672,18 +650,10 @@ export default function App() {
                   <button disabled={busy} onClick={() => void trySample("orders.json", "application/json")}>
                     {t("Orders records (JSON)")}
                   </button>
-                  <button
-                    className="quiet"
-                    disabled={busy}
-                    title={t("Open a .datalens.json file someone saved to see their analysis. No upload to the analysis service is needed.")}
-                    onClick={() => snapshotInput.current?.click()}
-                  >
-                    {t("Open a saved snapshot")}
-                  </button>
                 </div>
               </div>
               <small>
-                {tf("CSV (UTF-8, Thai Windows-874, UTF-16; comma, semicolon, tab or pipe), Excel .xlsx (choose any sheet) or JSON records · up to {mb} MB · 100,000 rows · 100 columns", { mb: MAX_UPLOAD_MB })}
+                {tf("CSV, Excel (.xlsx) or JSON · up to {mb} MB · 100,000 rows · 100 columns", { mb: MAX_UPLOAD_MB })}
               </small>
             </section>
           ) : (
@@ -711,7 +681,7 @@ export default function App() {
                     className="report-button"
                     onClick={() => downloadExecutiveReport(data, auditEvents, { followUps, sheets: sheetOverview })}
                   >
-                    <Download size={15} /> {approved ? t("Export approved brief") : t("Export draft profile")}
+                    <Upload size={15} /> {approved ? t("Export approved brief") : t("Export draft profile")}
                   </button>
                   <button
                     className="report-button"
@@ -721,13 +691,13 @@ export default function App() {
                       }
                     }}
                   >
-                    <Download size={15} /> {t("Print / Save as PDF")}
+                    <Printer size={15} /> {t("Print / Save as PDF")}
                   </button>
                   <button
                     className="report-button"
                     onClick={() => downloadSnapshot(buildSnapshot(data, auditEvents, followUps, sheetOverview))}
                   >
-                    <Download size={15} /> {t("Save snapshot")}
+                    <Upload size={15} /> {t("Save snapshot")}
                   </button>
                   <span className="analyzed">
                     <Check size={14} />{t("Analysis complete")}</span>
@@ -841,7 +811,8 @@ export default function App() {
                       }}
                     />
                   )}
-                  {data.provenance.header_row_suggestion && !headerRow && (
+                  {data.provenance.header_row_suggestion &&
+                    data.provenance.header_row !== data.provenance.header_row_suggestion && (
                     <section className="header-notice" role="status">
                       <CircleAlert size={20} />
                       <div>

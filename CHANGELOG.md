@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Simpler home page: the header-row field and the separate snapshot button are gone. Title lines above a CSV table are skipped automatically when the rows below form a clean table (otherwise the suggestion notice or error explains what to do); a `.datalens.json` file is recognized when chosen or dropped like any other file.
+- Export buttons use the arrow-up icon; the print button uses a printer icon.
+
 - Snapshots: "Save snapshot" writes the finished analysis, follow-ups and sheet overview to a `.datalens.json` file. Anyone can open it from the home page (or by dropping it in) without the original file or any server storage.
 - Follow-up plan: owner, due date and note per issue type, shown in the executive brief and included in the Excel issue list, JSON export and snapshot.
 - All sheets: a workbook's sheets can be analyzed in one step and compared in a table (also in the brief); any sheet can be opened from it.

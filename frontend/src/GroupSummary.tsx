@@ -1,5 +1,5 @@
 import { t, tf } from "./i18n";
-import { Download } from "lucide-react";
+import { Upload } from "lucide-react";
 import type { Analysis } from "./types";
 import { downloadWorkbook } from "./xlsx";
 
@@ -92,9 +92,9 @@ export default function GroupSummary({
         {summary && (
           <>
             <button className="report-button" onClick={exportXlsx}>
-              <Download size={15} />{t("Export summary (Excel)")}</button>
+              <Upload size={15} />{t("Export summary (Excel)")}</button>
             <button className="report-button" onClick={exportCsv}>
-              <Download size={15} />{t("Export summary (CSV)")}</button>
+              <Upload size={15} />{t("Export summary (CSV)")}</button>
           </>
         )}
       </div>

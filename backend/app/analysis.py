@@ -680,6 +680,15 @@ def analyze(
             first_full = next(index for index, count in enumerate(probe) if count >= 0.8 * max(probe))
             header_row_suggestion = first_full + 1 if first_full else None
         skipped = 0
+        if (
+            header_row is None
+            and header_row_suggestion
+            and len({len(row) for row in all_rows}) > 1
+            and len(all_rows) - header_row_suggestion >= 2
+            and len({len(row) for row in all_rows[header_row_suggestion - 1 :]}) == 1
+        ):
+            # Title lines above the table make the rows uneven; start at the first full row instead of failing.
+            header_row = header_row_suggestion
         if header_row is not None:
             if isinstance(header_row, bool) or not isinstance(header_row, int) or not 1 <= header_row <= min(total_file_rows, 1000):
                 raise ValueError("The header row must be a row number inside the file.")
