@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Excel and totals checks: hidden sheets, columns and rows are reported (they are sent with the file and were already being analyzed); numbers stored as text in an Excel column are reported (a sum in the recipient's Excel would show 0); a last row labelled Total/Sum/รวม whose numbers equal the sum of the rows above is reported as a totals row that would double any sum. All three can be ignored per file name.
+
 - Found by testing with thousands of simulated files and fixed: a blank line inside a table made the whole file fail; headers with a trailing comma, an empty name or a repeated name were refused (now tidied, with a notice); fully empty rows (common at the end of Excel exports) counted as missing cells; a blank line in a one-column file failed; files with old-Mac CR line endings failed; a damaged Excel sheet could produce a server error instead of a message; 9-digit codes were mistaken for phone numbers while +66 numbers were missed.
 - Email columns are reported as personal data.
 - Warnings that depend on column names (negative amounts, future dates, spelling variants, Excel date numbers, emails) can be ignored per file name; the choice is remembered in the browser and shown with a "show them again" link.

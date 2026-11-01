@@ -4,6 +4,7 @@ import codecs
 import csv
 import datetime
 import hashlib
+import html
 import io
 import json
 import re
@@ -165,6 +166,7 @@ def _is_valid_date(value: str, order: str = "dmy") -> bool:
     return _to_date(value, order) is not None
 
 
+TOTAL_LABEL = re.compile(r"^\s*(?:grand\s+)?(?:sub)?totals?\b|^\s*sum\b|^\s*(?:ยอด)?รวม", re.IGNORECASE)
 AMOUNT_NAME = re.compile(r"amount|price|total|qty|quantity|revenue|cost|salary|ราคา|จำนวน|ยอด|เงิน", re.IGNORECASE)
 PAST_DATE_NAME = re.compile(r"order|created|signup|sign_up|birth|dob|joined|sent|paid|invoice|delivered|สั่ง|เกิด|สร้าง|ออก|ส่ง", re.IGNORECASE)
 SERIAL_DATE_NAME = re.compile(r"date|time|due|deadline|created|updated|birth|dob|วันที่|วัน|กำหนด", re.IGNORECASE)
@@ -253,7 +255,7 @@ def _timeseries(column: str, values: pd.Series, order: str = "dmy") -> dict | No
     }
 
 
-def _xlsx_to_csv_text(content: bytes, sheet: str | None = None) -> tuple[str, str, list[str]]:
+def _xlsx_to_csv_text(content: bytes, sheet: str | None = None) -> tuple[str, str, list[str], dict]:
     """Read cached values of the first worksheet. Formulas, macros and external links are never evaluated."""
     try:
         with zipfile.ZipFile(io.BytesIO(content)) as archive:
@@ -272,7 +274,15 @@ def _xlsx_to_csv_text(content: bytes, sheet: str | None = None) -> tuple[str, st
             raise ValueError("The selected worksheet does not exist in this workbook.")
         worksheet = workbook[sheet] if sheet is not None else workbook.worksheets[0]
         rows = []
+        text_numbers: Counter = Counter()
+        text_cells: Counter = Counter()
         for row in worksheet.iter_rows(values_only=True):
+            for index, cell in enumerate(row):
+                if isinstance(cell, str) and cell.strip():
+                    text_cells[index] += 1
+                    token = cell.strip()
+                    if PLAIN_NUMBER.fullmatch(token) and not (len(token) > 1 and token[0] == "0" and token[1].isdigit()):
+                        text_numbers[index] += 1
             cells = [_xlsx_cell(cell) for cell in row]
             while cells and cells[-1] == "":
                 cells.pop()
@@ -290,13 +300,53 @@ def _xlsx_to_csv_text(content: bytes, sheet: str | None = None) -> tuple[str, st
         writer = csv.writer(buffer, lineterminator="\n")
         for row in rows:
             writer.writerow(row + [""] * (width - len(row)))
-        return buffer.getvalue(), worksheet.title, names
+        extras = _xlsx_hidden(content, worksheet.title)
+        extras["text_number_columns"] = [
+            index + 1 for index, count in sorted(text_numbers.items()) if count >= 2 and count >= 0.5 * text_cells[index]
+        ]
+        return buffer.getvalue(), worksheet.title, names, extras
     except ValueError:
         raise
     except Exception as exc:  # a damaged sheet part fails while rows are read, with several unrelated types
         raise ValueError("The Excel workbook could not be read.") from exc
     finally:
         workbook.close()
+
+
+def _xml_attribute(tag: str, name: str) -> str | None:
+    match = re.search(rf'(?<![\w:]){re.escape(name)}="([^"]*)"', tag)
+    return html.unescape(match.group(1)) if match else None
+
+
+def _xlsx_hidden(content: bytes, title: str) -> dict:
+    """Hidden sheets, columns and rows travel with the file, so the sender should know about them."""
+    found: dict = {"hidden_sheets": [], "hidden_columns": [], "hidden_rows": 0}
+    try:
+        with zipfile.ZipFile(io.BytesIO(content)) as archive:
+            workbook_xml = archive.read("xl/workbook.xml").decode("utf-8", "ignore")
+            relationships = archive.read("xl/_rels/workbook.xml.rels").decode("utf-8", "ignore")
+            targets = {
+                _xml_attribute(tag, "Id"): _xml_attribute(tag, "Target") for tag in re.findall(r"<Relationship\b[^>]*>", relationships)
+            }
+            sheet_path = None
+            for tag in re.findall(r"<sheet\b[^>]*>", workbook_xml):
+                name = _xml_attribute(tag, "name")
+                if _xml_attribute(tag, "state") in {"hidden", "veryHidden"}:
+                    found["hidden_sheets"].append(name)
+                if name == title:
+                    target = targets.get(_xml_attribute(tag, "r:id"))
+                    if target:
+                        sheet_path = target.lstrip("/") if target.startswith("/") else f"xl/{target}"
+            if sheet_path:
+                sheet_xml = archive.read(sheet_path).decode("utf-8", "ignore")
+                for tag in re.findall(r"<col\b[^>]*>", sheet_xml):
+                    if _xml_attribute(tag, "hidden") in {"1", "true"}:
+                        low, high = int(_xml_attribute(tag, "min") or 0), int(_xml_attribute(tag, "max") or 0)
+                        found["hidden_columns"].extend(range(low, min(high, low + MAX_COLUMNS) + 1))
+                found["hidden_rows"] = len(re.findall(r'<row\b[^>]*\bhidden="(?:1|true)"', sheet_xml))
+    except (KeyError, ValueError, zipfile.BadZipFile):
+        pass
+    return found
 
 
 def _xlsx_cell(value) -> str:
@@ -507,6 +557,9 @@ def _executive_summary(
     variant_columns: list[tuple[str, int, str]],
     email_columns: list[str],
     ignored_warnings: list[str],
+    hidden_content: dict,
+    text_number_columns: list[str],
+    totals_row: int | None,
 ) -> dict:
     """Build the executive summary in English and Thai; the English `status` stays canonical for workflow checks."""
     issues = []
@@ -689,6 +742,55 @@ def _executive_summary(
             ("Use one spelling for each value before grouping or sending.", "ใช้การสะกดเดียวกันสำหรับแต่ละค่าก่อนจัดกลุ่มหรือส่งต่อ"),
             code="variants",
         )
+    if totals_row:
+        add(
+            "medium",
+            (f"Row {totals_row} looks like a totals row", f"แถวที่ {totals_row} ดูเหมือนแถวผลรวม"),
+            (
+                "Its label says total and its numbers equal the sum of the rows above, so any sum made from this file would count everything twice.",
+                "ป้ายกำกับเป็นผลรวมและตัวเลขเท่ากับผลบวกของแถวด้านบน การรวมยอดจากไฟล์นี้จะนับซ้ำทั้งหมด",
+            ),
+            ("Delete the totals row before sending the file.", "ลบแถวผลรวมก่อนส่งไฟล์"),
+            code="totals_row",
+        )
+    if hidden_content["sheets"] or hidden_content["columns"] or hidden_content["rows"]:
+        parts_en, parts_th = [], []
+        if hidden_content["sheets"]:
+            parts_en.append(f"hidden sheet(s) {', '.join(hidden_content['sheets'][:3])}")
+            parts_th.append(f"ชีตที่ซ่อน {', '.join(hidden_content['sheets'][:3])}")
+        if hidden_content["columns"]:
+            parts_en.append(f"hidden column(s) {', '.join(hidden_content['columns'][:3])}")
+            parts_th.append(f"คอลัมน์ที่ซ่อน {', '.join(hidden_content['columns'][:3])}")
+        if hidden_content["rows"]:
+            parts_en.append(f"{hidden_content['rows']:,} hidden row(s)")
+            parts_th.append(f"แถวที่ซ่อน {hidden_content['rows']:,} แถว")
+        add(
+            "medium",
+            ("Hidden content in the workbook", "มีเนื้อหาที่ซ่อนอยู่ในสมุดงาน"),
+            (
+                f"The file contains {'; '.join(parts_en)}. Hidden data is still sent with the file, and DataLens checked it too.",
+                f"ไฟล์มี {'; '.join(parts_th)} ข้อมูลที่ซ่อนยังถูกส่งไปกับไฟล์ และ DataLens ตรวจรวมไว้ด้วย",
+            ),
+            (
+                "Unhide and review it, or delete it before sending.",
+                "เลิกซ่อนแล้วตรวจสอบ หรือลบออกก่อนส่ง",
+            ),
+            code="hidden_content",
+        )
+    if text_number_columns:
+        add(
+            "medium",
+            (f"Numbers stored as text in {', '.join(text_number_columns[:3])}", f"ตัวเลขถูกเก็บเป็นข้อความใน {', '.join(text_number_columns[:3])}"),
+            (
+                "These cells look like numbers but Excel keeps them as text, so a sum in the recipient's Excel shows 0 and sorting goes wrong. DataLens read them as numbers.",
+                "เซลล์เหล่านี้ดูเหมือนตัวเลขแต่ Excel เก็บเป็นข้อความ ผู้รับที่รวมยอดจะได้ 0 และเรียงลำดับผิด DataLens อ่านเป็นตัวเลขให้แล้ว",
+            ),
+            (
+                "In Excel, convert the column to numbers (Data > Text to Columns > Finish) before sending.",
+                "ใน Excel แปลงคอลัมน์เป็นตัวเลข (ข้อมูล > ข้อความเป็นคอลัมน์ > เสร็จสิ้น) ก่อนส่ง",
+            ),
+            code="text_numbers",
+        )
     if email_columns:
         add(
             "medium",
@@ -767,7 +869,7 @@ def _executive_summary(
     return english
 
 
-def _read_text(content: bytes, filename: str, sheet: str | None) -> tuple[str, str | None, list[str] | None, str, str, str]:
+def _read_text(content: bytes, filename: str, sheet: str | None) -> tuple[str, str | None, list[str] | None, str, str, str, dict]:
     """Turn an uploaded CSV, workbook or JSON file into delimited text; returns text, sheet, sheets, encoding, delimiter, format."""
     if len(content) > MAX_BYTES:
         raise ValueError(f"The file exceeds the {MAX_BYTES // (1024 * 1024)} MB limit.")
@@ -775,17 +877,17 @@ def _read_text(content: bytes, filename: str, sheet: str | None) -> tuple[str, s
     if sheet is not None and not isinstance(sheet, str):
         raise ValueError("The worksheet name must be text.")
     if content.startswith(b"PK\x03\x04"):
-        text, sheet_name, sheet_names = _xlsx_to_csv_text(content, sheet)
-        return text, sheet_name, sheet_names, "xlsx", ",", "xlsx"
+        text, sheet_name, sheet_names, extras = _xlsx_to_csv_text(content, sheet)
+        return text, sheet_name, sheet_names, "xlsx", ",", "xlsx", extras
     if filename.lower().endswith(JSON_SUFFIXES):
         text, encoding = _json_to_csv_text(content)
-        return text, None, None, encoding, ",", "json"
+        return text, None, None, encoding, ",", "json", {}
     text, encoding = _decode(content)
     if "\x00" in text:
         raise ValueError("The file contains binary data.")
     if "\r" in text:  # old Mac files use a lone CR as the line ending
         text = text.replace("\r\n", "\n").replace("\r", "\n")
-    return text, None, None, encoding, _detect_delimiter(text), "csv"
+    return text, None, None, encoding, _detect_delimiter(text), "csv", {}
 
 
 def analyze(
@@ -804,7 +906,7 @@ def analyze(
     year_era: str | None = None,
     ignored_warnings: list[str] | None = None,
 ) -> dict:
-    text, sheet_name, sheet_names, encoding, delimiter, source_format = _read_text(content, filename, sheet)
+    text, sheet_name, sheet_names, encoding, delimiter, source_format, extras = _read_text(content, filename, sheet)
     ignored_warnings = ignored_warnings or []
     if (
         not isinstance(ignored_warnings, list)
@@ -894,6 +996,7 @@ def analyze(
             headers = [name.strip() for name in column_names]
             if any(not name for name in headers):
                 raise ValueError("Column names cannot be empty.")
+        raw_headers = list(headers)
         repaired: list[dict] = []
         blank_columns_removed = 0
         if use_header and column_names is None:
@@ -967,6 +1070,17 @@ def analyze(
     date_order_ambiguous = date_order is None and seen_slash_dates > 0 and not day_first_proof and not month_first_proof
     chosen_date_order = date_order or ("mdy" if month_first_proof and not day_first_proof else "dmy")
     columns, numeric, personal_data, serial_date_columns = [], {}, [], []
+    def raw_name(position: int) -> str:
+        label = raw_headers[position - 1] if use_header and 0 < position <= len(raw_headers) else ""
+        return label or f"column {position}"
+
+    hidden_content = {
+        "sheets": extras.get("hidden_sheets", []),
+        "columns": [raw_name(position) for position in extras.get("hidden_columns", [])],
+        "rows": extras.get("hidden_rows", 0),
+    }
+    text_number_columns = [raw_name(position) for position in extras.get("text_number_columns", [])]
+    totals_row: int | None = None
     mismatch_examples: list[tuple[str, str, list[str]]] = []
     context_warnings: list[dict] = []
     variant_columns: list[tuple[str, int, str]] = []
@@ -1134,6 +1248,16 @@ def analyze(
             sample("outlier", good.index[outlier_mask], name, f"Outside the 1.5×IQR range {q1 - 1.5 * iqr:,.2f} to {q3 + 1.5 * iqr:,.2f}")
             columns[-1]["outliers"] = outlier_count
             stats.update({"q1": float(q1), "q3": float(q3)})
+    if n >= 3:
+        last = normalized.iloc[-1]
+        labelled = any(isinstance(cell, str) and TOTAL_LABEL.search(cell) for cell in last)
+        if labelled:
+            for name, series in numeric.items():
+                value, above = series.iloc[-1], series.iloc[:-1].sum()
+                if np.isfinite(value) and above and abs(value - above) <= max(0.005 * abs(above), 0.01):
+                    totals_row = row_numbers[n - 1] + row_shift
+                    sample("totals", normalized.index[[n - 1]], None, "Looks like a totals row: it equals the sum of the rows above")
+                    break
     missing = int(normalized.isna().sum().sum())
     present = n * len(headers) - missing
     duplicate_mask = normalized.duplicated()
@@ -1317,6 +1441,9 @@ def analyze(
         variant_columns=variant_columns,
         email_columns=email_columns,
         ignored_warnings=ignored_warnings,
+        hidden_content=hidden_content,
+        text_number_columns=text_number_columns,
+        totals_row=totals_row,
     )
     numeric_names = list(numeric)
     scatter = []
@@ -1410,7 +1537,7 @@ def redact_columns(
     """Return the file as CSV text without the named columns. Header handling follows the analysis settings."""
     if not isinstance(drop_columns, list) or not drop_columns or not all(isinstance(name, str) for name in drop_columns):
         raise ValueError("Choose the columns to remove.")
-    text, _, _, _, delimiter, _ = _read_text(content, filename, sheet)
+    text, _, _, _, delimiter, _, _ = _read_text(content, filename, sheet)
     try:
         rows = list(csv.reader(io.StringIO(text), delimiter=delimiter, strict=True))
     except csv.Error as exc:

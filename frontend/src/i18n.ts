@@ -78,6 +78,7 @@ const th: Record<string, string> = {
   "Overall score": "คะแนนรวม",
   "Equal-weight mean of available dimensions.": "ค่าเฉลี่ยถ่วงน้ำหนักเท่ากันของมิติที่มี",
   Overview: "ภาพรวม",
+  "Totals row": "แถวผลรวม",
   "Before you send": "ก่อนส่ง",
   "Personal data": "ข้อมูลส่วนบุคคล",
   "None found": "ไม่พบ",
@@ -424,6 +425,7 @@ export function t(text: string): string {
 }
 
 const reasonRules: [RegExp, (m: RegExpMatchArray) => string][] = [
+  [/^Looks like a totals row/, () => "ดูเหมือนแถวผลรวม: เท่ากับผลบวกของแถวด้านบน"],
   [/^Spelled differently from the more common “(.*)”$/, (m) => `สะกดต่างจาก “${m[1]}” ที่พบบ่อยกว่า`],
   [/^Blank or marked as missing$/, () => "ว่างหรือถูกกำหนดให้เป็นค่าว่าง"],
   [/^Repeats an earlier row$/, () => "ซ้ำกับแถวก่อนหน้า"],

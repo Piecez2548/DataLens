@@ -41,6 +41,11 @@ Use the **Try a sample** buttons on the home page for repeatable demonstrations.
 - Re-upload a file name used before: header row, business key, date order, year era, markers, sheet and summary grouping are reused and a notice offers "Don't remember these".
 - Workbook with several sheets: "Analyze all sheets" lists rows, columns, status, items to review and scores per sheet (up to 12) and each sheet can be opened.
 
+### Excel and totals
+- Hide a column, a row and a sheet in a workbook: the "Hidden content in the workbook" finding names them.
+- A column of numbers typed as text (green triangle in Excel) is reported; a code column like 00123 is not.
+- A last row "Total" with numbers equal to the sums above is reported with its row number; a total that does not match is not. `python -m tools.excel_edge` prints how merged cells, hidden content, tables, formulas and formatted numbers are read.
+
 ### Simulated files
 `backend/tests/test_simulated.py` builds files with known, injected problems (blanks, text in number columns, impossible dates, extreme values, negative amounts, spelling variants, repeated rows) in CSV (comma, semicolon, tab, UTF-16), Excel and JSON, and checks that every problem is found at the right file row and that clean files are reported "Ready to send". It also compares statistics, outlier counts, repeated keys, group totals and rule violations with an independent pandas/numpy calculation, checks row numbers across title lines and blank lines, measures personal-data false alarms, and feeds 120 damaged files (flipped bytes, truncation, inserted bytes, stray quotes) to confirm they fail with a clear message or analyze sanely.
 For larger runs: `python -m tools.run_corpus 300`, `python -m tools.wild_stats`, `python -m tools.wild_edge`, `python -m tools.fuzz 1500` (from `backend`). The last full runs found no mismatches over 600 files and no unexpected exceptions over 1,500 damaged files.

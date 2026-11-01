@@ -784,3 +784,51 @@ def test_ignored_warnings_leave_the_verdict_and_findings_untouched_by_them():
 def test_core_findings_cannot_be_ignored():
     result = analyze(b"id,team\n1,a\n2,\n", "m.csv", ignored_warnings=["missing", "everything"])
     assert any("missing" in item["title"] for item in result["executive"]["issues"])
+
+
+def _xlsx(rows, hide_column=None, hide_row=None, hidden_sheet=False):
+    import io
+
+    import openpyxl
+
+    workbook = openpyxl.Workbook()
+    sheet = workbook.active
+    for row in rows:
+        sheet.append(row)
+    if hide_column:
+        sheet.column_dimensions[hide_column].hidden = True
+    if hide_row:
+        sheet.row_dimensions[hide_row].hidden = True
+    if hidden_sheet:
+        workbook.create_sheet("Notes").sheet_state = "hidden"
+    out = io.BytesIO()
+    workbook.save(out)
+    return out.getvalue()
+
+
+def test_hidden_columns_rows_and_sheets_are_reported_but_still_checked():
+    rows = [["id", "secret", "amount"]] + [[i, f"s{i}", i * 10] for i in range(5)]
+    result = analyze(_xlsx(rows, hide_column="B", hide_row=3, hidden_sheet=True), "h.xlsx")
+    detail = next(i["detail"] for i in result["executive"]["issues"] if "Hidden content" in i["title"])
+    assert "secret" in detail and "Notes" in detail and "1 hidden row" in detail
+    assert result["rows"] == 5
+    visible = analyze(_xlsx(rows), "v.xlsx")
+    assert not any("Hidden" in i["title"] for i in visible["executive"]["issues"])
+
+
+def test_numbers_stored_as_text_in_excel_are_flagged_but_codes_with_leading_zeros_are_not():
+    rows = [["id", "qty", "code"]] + [[i, str(i * 3), f"00{i}"] for i in range(1, 8)]
+    result = analyze(_xlsx(rows), "t.xlsx")
+    titles = [i["title"] for i in result["executive"]["issues"]]
+    assert "Numbers stored as text in qty" in titles
+    assert next(c for c in result["columns"] if c["name"] == "qty")["type"] == "numeric"
+
+
+def test_a_totals_row_that_equals_the_sum_above_is_flagged():
+    flagged = analyze(b"id,team,amount\n1,a,10\n2,b,20\n3,a,30\nTotal,,60\n", "t.csv")
+    assert any("looks like a totals row" in i["title"] for i in flagged["executive"]["issues"])
+    assert flagged["issue_samples"]["kinds"]["totals"]["examples"][0]["row"] == 5
+    not_sum = analyze(b"id,team,amount\n1,a,10\n2,b,20\n3,a,30\nTotal,,99\n", "t.csv")
+    assert "totals" not in not_sum["issue_samples"]["kinds"]
+    thai = analyze("id,team,amount\n1,a,10\n2,b,20\nรวม,,30\n".encode(), "t.csv")
+    assert "totals" in thai["issue_samples"]["kinds"]

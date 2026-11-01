@@ -11,6 +11,7 @@ export const issueKindLabels: Record<string, string> = {
   rule: "Business-rule violations",
   key_duplicate: "Repeated business keys",
   variant: "Spelling variants",
+  totals: "Totals row",
 };
 
 export type IssueRow = {

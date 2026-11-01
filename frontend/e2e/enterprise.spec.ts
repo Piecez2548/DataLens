@@ -520,3 +520,17 @@ test("tidies exported files with an empty trailing column and repeated names", a
   await expect(page.getByText(/total → total_2/)).toBeVisible();
   await expect(page.getByText("2 rows · 3 columns")).toBeVisible();
 });
+
+test("warns about a totals row left in the file", async ({ page }) => {
+  const nl = String.fromCharCode(10);
+  await page.goto("/");
+  await page.getByLabel(/I am allowed to analyze this file/).check();
+  await page.getByLabel("Upload CSV file").setInputFiles({
+    name: "with-total.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from(["id,team,amount", "1,a,10", "2,b,20", "3,a,30", "Total,,60"].join(nl) + nl),
+  });
+  await expect(page.getByText("Row 5 looks like a totals row")).toBeVisible();
+  await page.getByRole("navigation", { name: "Dataset views" }).getByRole("button", { name: "Issues" }).click();
+  await expect(page.getByRole("tab", { name: /Totals row/ })).toBeVisible();
+});

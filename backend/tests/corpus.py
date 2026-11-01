@@ -126,12 +126,21 @@ def to_csv_bytes(header, rows, delimiter=",", encoding="utf-8") -> bytes:
     return text.encode(encoding)
 
 
+def _excel_value(text: str):
+    """Numbers are stored as numbers, as a spreadsheet user would have them; text stays text."""
+    try:
+        number = float(text)
+    except ValueError:
+        return text
+    return int(number) if number.is_integer() and "." not in text else number
+
+
 def to_xlsx_bytes(header, rows) -> bytes:
     workbook = openpyxl.Workbook()
     sheet = workbook.active
     sheet.append(header)
     for row in rows:
-        sheet.append([int(v) if v.isdigit() else v for v in row])
+        sheet.append([_excel_value(v) for v in row])
     out = io.BytesIO()
     workbook.save(out)
     return out.getvalue()
