@@ -454,6 +454,10 @@ MAX_PROBLEM_ROWS = 500
 MAX_PROBLEM_CELLS = 60_000
 
 
+def _clean_number(number) -> float | None:
+    return None if pd.isna(number) else float(number)
+
+
 def _problem_rows(frame: pd.DataFrame, positions: set[int], samples: dict, row_numbers: list[int], row_shift: int) -> dict:
     """The original rows behind the located issues (lowest row numbers first), so they can be handed to whoever fixes them."""
     labels: dict[int, list[str]] = {}
@@ -1184,7 +1188,6 @@ def analyze(
         sizes = grouped.size()
         order_key = figures["sum"] if measure else sizes
         ranked = order_key.sort_values(ascending=False, kind="stable").index
-        clean = lambda number: None if pd.isna(number) else float(number)
         group_summary = {
             "by": group_by["by"],
             "measure": measure,
@@ -1194,10 +1197,10 @@ def analyze(
                 {
                     "group": str(label),
                     "rows": int(sizes[label]),
-                    "sum": clean(figures.at[label, "sum"]) if measure else None,
-                    "mean": clean(figures.at[label, "mean"]) if measure else None,
-                    "min": clean(figures.at[label, "min"]) if measure else None,
-                    "max": clean(figures.at[label, "max"]) if measure else None,
+                    "sum": _clean_number(figures.at[label, "sum"]) if measure else None,
+                    "mean": _clean_number(figures.at[label, "mean"]) if measure else None,
+                    "min": _clean_number(figures.at[label, "min"]) if measure else None,
+                    "max": _clean_number(figures.at[label, "max"]) if measure else None,
                 }
                 for label in ranked[:50]
             ],
