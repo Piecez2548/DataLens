@@ -835,14 +835,14 @@ def test_a_totals_row_that_equals_the_sum_above_is_flagged():
 
 
 def test_numbers_mixed_with_units_are_reported():
-    data = "id,item,weight\n1,a,12 kg\n2,b,5kg\n3,c,7 kg\n4,d,9\n5,e,10 kg\n6,f,11\n7,g,8\n8,h,6\n".encode()
+    data = b"id,item,weight\n1,a,12 kg\n2,b,5kg\n3,c,7 kg\n4,d,9\n5,e,10 kg\n6,f,11\n7,g,8\n8,h,6\n"
     result = analyze(data, "units.csv")
     assert any("units" in issue["title"] for issue in result["executive"]["issues"])
     assert result["executive"]["status"] == "Review needed"
 
 
 def test_product_codes_are_not_mistaken_for_units():
-    data = "id,code\n1,10A\n2,20B\n3,30C\n4,40D\n5,50E\n".encode()
+    data = b"id,code\n1,10A\n2,20B\n3,30C\n4,40D\n5,50E\n"
     result = analyze(data, "codes.csv")
     assert not any("units" in issue["title"] for issue in result["executive"]["issues"])
 
@@ -855,6 +855,6 @@ def test_thai_windows_874_file_with_special_characters_reads_cleanly():
 
 
 def test_mixed_date_formats_in_one_column_stay_dates():
-    data = "id,date\n1,15/03/2024\n2,2024-03-15\n3,16/03/2024\n4,2024-03-17\n5,18/03/2024\n6,2024-03-19\n".encode()
+    data = b"id,date\n1,15/03/2024\n2,2024-03-15\n3,16/03/2024\n4,2024-03-17\n5,18/03/2024\n6,2024-03-19\n"
     result = analyze(data, "dates.csv")
     assert next(c for c in result["columns"] if c["name"] == "date")["type"] == "datetime"

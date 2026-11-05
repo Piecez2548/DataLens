@@ -20,14 +20,14 @@ import { buildSnapshot, downloadSnapshot, isSnapshotName, parseSnapshot } from "
 import { forgetSettings, loadSettings, saveSettings, type SavedSettings } from "./savedSettings";
 import SheetOverview from "./SheetOverview";
 import SendCheck from "./SendCheck";
-import { downloadProblemRowsXlsx } from "./issueExport";
+const downloadProblemRowsXlsx = (data: Analysis) => import("./issueExport").then((module) => module.downloadProblemRowsXlsx(data));
 import { allowedFile, checkSentSize, MAX_TEXT_MB, MAX_UPLOAD_MB, prepareUpload } from "./upload";
-import { RulesPanel } from "./Rules";
 import { downloadExecutiveReport, printExecutiveReport } from "./report";
+const RulesPanel = lazy(() => import("./Rules").then((module) => ({ default: module.RulesPanel })));
 import ChartBoundary from "./ChartBoundary";
-import Compare from "./Compare";
-import IssueExplorer from "./IssueExplorer";
-import GroupSummary from "./GroupSummary";
+const Compare = lazy(() => import("./Compare"));
+const IssueExplorer = lazy(() => import("./IssueExplorer"));
+const GroupSummary = lazy(() => import("./GroupSummary"));
 const Charts = lazy(() => import("./Charts"));
 const baseTabs = ["Overview", "Data quality", "Issues", "Summary", "Explore", "Data preview"] as const;
 type SchemaOptions = {

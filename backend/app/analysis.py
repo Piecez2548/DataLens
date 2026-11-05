@@ -1126,7 +1126,8 @@ def analyze(
 
     mismatches = invalid = checked = 0
     for name in headers:
-        values = normalized[name].dropna()
+        missing_mask = normalized[name].isna()
+        values = normalized[name][~missing_mask]
 
         def kind(value):
             if value.lower() in {"true", "false"}:
@@ -1171,7 +1172,7 @@ def analyze(
         stats = None
         histogram = []
         numeric_format = None
-        sample("missing", normalized.index[normalized[name].isna()], name, "Blank or marked as missing")
+        sample("missing", normalized.index[missing_mask], name, "Blank or marked as missing")
         if (
             dtype == "numeric"
             and SERIAL_DATE_NAME.search(name)
@@ -1249,7 +1250,7 @@ def analyze(
             {
                 "name": name,
                 "type": dtype,
-                "missing": int(normalized[name].isna().sum()),
+                "missing": int(missing_mask.sum()),
                 "unique": int(values.nunique()),
                 "mismatches": mismatch,
                 "invalid": bad,
@@ -1374,7 +1375,8 @@ def analyze(
     embedded_delimiters = []
     for header in headers:
         values = normalized[header].dropna().astype(str)
-        pipe_ratio = float(values.str.count(r"\|").ge(2).mean()) if len(values) else 0
+        has_pipe = any("|" in value for value in values.unique())
+        pipe_ratio = float(values.str.count(r"\|").ge(2).mean()) if len(values) and has_pipe else 0
         if header.count("|") >= 2 or pipe_ratio >= 0.8:
             embedded_delimiters.append(header)
     if business_rules is None:
