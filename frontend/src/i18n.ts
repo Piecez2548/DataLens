@@ -233,7 +233,7 @@ const th: Record<string, string> = {
   Record: "ระเบียน",
   "Why it was flagged": "เหตุผลที่ถูกทำเครื่องหมาย",
   "Missing values": "ค่าว่าง",
-  "Type conflicts": "ชนิดข้อมูลขัดแย้ง",
+  "Values that do not fit": "ค่าที่ไม่เข้ากับคอลัมน์",
   "Invalid values": "ค่าที่ไม่ถูกต้อง",
   "Business-rule violations": "ละเมิดกฎทางธุรกิจ",
   "Repeated business keys": "คีย์ทางธุรกิจซ้ำ",

@@ -534,3 +534,18 @@ test("warns about a totals row left in the file", async ({ page }) => {
   await page.getByRole("navigation", { name: "Dataset views" }).getByRole("button", { name: "Issues" }).click();
   await expect(page.getByRole("tab", { name: /Totals row/ })).toBeVisible();
 });
+
+test("settings are remembered for next month's file with a different number in its name", async ({ page }) => {
+  const nl = String.fromCharCode(10);
+  const body = Buffer.from(["id,amount", "1,100", "2,-20", "3,50"].join(nl) + nl);
+  await page.goto("/");
+  await page.getByLabel(/I am allowed to analyze this file/).check();
+  await page.getByLabel("Upload CSV file").setInputFiles({ name: "refunds-2569-01.csv", mimeType: "text/csv", buffer: body });
+  await page.getByRole("button", { name: "Ignore this warning" }).click();
+  await expect(page.getByRole("heading", { name: "Ready to send" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Clear dataset" }).click();
+  await page.getByLabel(/I am allowed to analyze this file/).check();
+  await page.getByLabel("Upload CSV file").setInputFiles({ name: "refunds-2569-02.csv", mimeType: "text/csv", buffer: body });
+  await expect(page.getByRole("heading", { name: "Ready to send" })).toBeVisible();
+});

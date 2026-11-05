@@ -13,7 +13,9 @@ export type SavedSettings = {
 
 const STORAGE_KEY = "datalens.settings";
 const MAX_ENTRIES = 30;
-const keyOf = (filename: string) => filename.trim().toLowerCase();
+const exactKey = (filename: string) => filename.trim().toLowerCase();
+// A monthly file is renamed every month (sales-2569-01.csv, sales-2569-02.csv), so digits are ignored in the key.
+const keyOf = (filename: string) => exactKey(filename).replace(/\d+/g, "#");
 
 function readAll(): Record<string, SavedSettings> {
   try {
@@ -33,7 +35,8 @@ function writeAll(all: Record<string, SavedSettings>) {
 }
 
 export function loadSettings(filename: string): SavedSettings | null {
-  const entry = readAll()[keyOf(filename)];
+  const all = readAll();
+  const entry = all[keyOf(filename)] ?? all[exactKey(filename)];
   return entry && Object.keys(entry).length ? entry : null;
 }
 
@@ -41,6 +44,7 @@ export function saveSettings(filename: string, settings: SavedSettings) {
   const all = readAll();
   const key = keyOf(filename);
   delete all[key];
+  delete all[exactKey(filename)];
   if (Object.keys(settings).length) all[key] = settings;
   // Most recently saved last; drop the oldest beyond the limit.
   const entries = Object.entries(all).slice(-MAX_ENTRIES);

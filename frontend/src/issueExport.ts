@@ -5,7 +5,7 @@ import { downloadWorkbook, type Sheet } from "./xlsx";
 export const issueKindLabels: Record<string, string> = {
   missing: "Missing values",
   duplicate: "Duplicate rows",
-  mismatch: "Type conflicts",
+  mismatch: "Values that do not fit",
   invalid: "Invalid values",
   outlier: "Outliers",
   rule: "Business-rule violations",

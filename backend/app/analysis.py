@@ -167,6 +167,7 @@ def _is_valid_date(value: str, order: str = "dmy") -> bool:
 
 
 TOTAL_LABEL = re.compile(r"^\s*(?:grand\s+)?(?:sub)?totals?\b|^\s*sum\b|^\s*(?:ยอด)?รวม", re.IGNORECASE)
+UNIT_NUMBER = re.compile(r"[-+]?\d[\d,]*(?:\.\d+)?\s*([^\W\d_]{1,8}\.?)")
 AMOUNT_NAME = re.compile(r"amount|price|total|qty|quantity|revenue|cost|salary|ราคา|จำนวน|ยอด|เงิน", re.IGNORECASE)
 PAST_DATE_NAME = re.compile(r"order|created|signup|sign_up|birth|dob|joined|sent|paid|invoice|delivered|สั่ง|เกิด|สร้าง|ออก|ส่ง", re.IGNORECASE)
 SERIAL_DATE_NAME = re.compile(r"date|time|due|deadline|created|updated|birth|dob|วันที่|วัน|กำหนด", re.IGNORECASE)
@@ -559,6 +560,7 @@ def _executive_summary(
     ignored_warnings: list[str],
     hidden_content: dict,
     text_number_columns: list[str],
+    unit_columns: list[str],
     totals_row: int | None,
 ) -> dict:
     """Build the executive summary in English and Thai; the English `status` stays canonical for workflow checks."""
@@ -608,46 +610,46 @@ def _executive_summary(
                 "ระเบียนที่ซ้ำอาจทำให้จำนวนและยอดเงินสูงเกินจริง",
             ),
             (
-                "Confirm the business key, then remove only records proven to be duplicates.",
-                "ยืนยันคีย์ทางธุรกิจ แล้วลบเฉพาะระเบียนที่พิสูจน์แล้วว่าซ้ำ",
+                "Check which columns identify a record, then delete only rows that are truly the same.",
+                "ตรวจว่าคอลัมน์ใดระบุแต่ละรายการ แล้วลบเฉพาะแถวที่ซ้ำกันจริง",
             ),
         )
     if mismatches:
         add(
             "medium",
-            (f"{mismatches:,} values conflict with their column type", f"มี {mismatches:,} ค่าที่ขัดกับชนิดของคอลัมน์"),
+            (f"{mismatches:,} values do not fit the rest of their column", f"มี {mismatches:,} ค่าที่ไม่เข้ากับค่าอื่นในคอลัมน์"),
             (
-                "Mixed types can break sorting, aggregation, and downstream imports."
-                + "".join(f" In {name} (expected {dtype}): {', '.join(repr(v) for v in found)}." for name, dtype, found in mismatch_examples[:3]),
-                "ชนิดข้อมูลที่ปนกันอาจทำให้การเรียงลำดับ การรวมยอด และการนำเข้าระบบอื่นผิดพลาด"
-                + "".join(f" ใน {name} (คาดว่าเป็น {dtype}): {', '.join(repr(v) for v in found)}" for name, dtype, found in mismatch_examples[:3]),
+                "A column that mixes numbers, dates and text cannot be summed or sorted correctly, and may fail when the recipient imports it."
+                + "".join(f" In {name} (mostly {dtype}): {', '.join(repr(v) for v in found)}." for name, dtype, found in mismatch_examples[:3]),
+                "คอลัมน์ที่มีตัวเลข วันที่ และข้อความปนกันจะรวมยอดหรือเรียงลำดับไม่ถูกต้อง และอาจนำเข้าระบบของผู้รับไม่ได้"
+                + "".join(f" ใน {name} (ส่วนใหญ่เป็น {dtype}): {', '.join(repr(v) for v in found)}" for name, dtype, found in mismatch_examples[:3]),
             ),
-            ("Standardize the flagged values before analysis.", "ปรับค่าที่ถูกทำเครื่องหมายให้เป็นรูปแบบเดียวกันก่อนวิเคราะห์"),
+            ("Fix the listed values so the whole column uses one format.", "แก้ค่าที่ระบุให้ทั้งคอลัมน์ใช้รูปแบบเดียวกัน"),
         )
     if invalid:
         add(
             "high",
-            (f"{invalid:,} typed values are invalid", f"มี {invalid:,} ค่าที่ไม่ถูกต้องตามชนิดข้อมูล"),
+            (f"{invalid:,} values are impossible", f"มี {invalid:,} ค่าที่เป็นไปไม่ได้"),
             (
-                "These values match the expected shape but fail a basic validity check.",
-                "ค่าเหล่านี้มีรูปแบบตามที่คาดไว้ แต่ไม่ผ่านการตรวจความถูกต้องพื้นฐาน",
+                "These values look right but cannot be real, such as a date that does not exist.",
+                "ค่าเหล่านี้ดูเหมือนถูกต้องแต่เป็นไปไม่ได้ เช่น วันที่ที่ไม่มีอยู่จริง",
             ),
             (
-                "Correct or exclude the invalid values with an auditable rule.",
-                "แก้ไขหรือตัดค่าที่ไม่ถูกต้องออกด้วยกฎที่ตรวจสอบย้อนหลังได้",
+                "Correct these values or remove those rows before sending.",
+                "แก้ค่าเหล่านี้หรือลบแถวเหล่านั้นก่อนส่ง",
             ),
         )
     if outliers:
         add(
             "info",
-            (f"{outliers:,} statistical outliers deserve context", f"มี {outliers:,} ค่าผิดปกติทางสถิติที่ควรหาสาเหตุ"),
+            (f"{outliers:,} values are far from the rest", f"มี {outliers:,} ค่าที่ห่างจากค่าอื่นมาก"),
             (
-                "IQR flags unusual numeric values; unusual does not automatically mean incorrect.",
-                "IQR ระบุค่าตัวเลขที่ผิดปกติ แต่ค่าผิดปกติไม่ได้แปลว่าผิดเสมอไป",
+                "These numbers are much larger or smaller than most others. That is not always a mistake.",
+                "ตัวเลขเหล่านี้มากหรือน้อยกว่าส่วนใหญ่มาก แต่ไม่ได้แปลว่าผิดเสมอไป",
             ),
             (
-                "Ask the data owner whether these represent valid edge cases, errors, or exceptional events.",
-                "สอบถามเจ้าของข้อมูลว่าเป็นกรณีสุดโต่งที่ถูกต้อง ข้อผิดพลาด หรือเหตุการณ์พิเศษ",
+                "Check whether they are real (a big order) or typing mistakes (an extra zero).",
+                "ตรวจว่าเป็นของจริง (เช่น ออเดอร์ใหญ่) หรือพิมพ์ผิด (เช่น เกินศูนย์)",
             ),
         )
     if embedded_delimiters:
@@ -673,8 +675,8 @@ def _executive_summary(
                 "ค่าในไฟล์อยู่นอกกฎที่กำหนดไว้สำหรับการวิเคราะห์นี้",
             ),
             (
-                "Resolve each violation or document an approved exception before executive use.",
-                "แก้ไขแต่ละรายการ หรือบันทึกข้อยกเว้นที่ได้รับอนุมัติ ก่อนนำเสนอผู้บริหาร",
+                "Fix each row, or change the rule if the rule is wrong, before sending.",
+                "แก้แต่ละแถว หรือแก้กฎถ้ากฎไม่ถูกต้อง ก่อนส่ง",
             ),
         )
     if key_duplicates:
@@ -689,8 +691,8 @@ def _executive_summary(
                 "คีย์เดียวกันปรากฏมากกว่าหนึ่งครั้ง จำนวนและยอดรวมต่อคีย์อาจสูงเกินจริง",
             ),
             (
-                "Confirm which record is authoritative for each key and remove or merge the others.",
-                "ยืนยันว่าระเบียนใดเป็นข้อมูลหลักของแต่ละคีย์ แล้วลบหรือรวมระเบียนที่เหลือ",
+                "Decide which row to keep for each key and delete or merge the others.",
+                "เลือกว่าจะเก็บแถวไหนของแต่ละคีย์ แล้วลบหรือรวมแถวที่เหลือ",
             ),
         )
     if personal_data:
@@ -776,6 +778,20 @@ def _executive_summary(
                 "เลิกซ่อนแล้วตรวจสอบ หรือลบออกก่อนส่ง",
             ),
             code="hidden_content",
+        )
+    if unit_columns:
+        add(
+            "medium",
+            (f"Numbers mixed with units in {', '.join(unit_columns[:3])}", f"ตัวเลขปนหน่วยใน {', '.join(unit_columns[:3])}"),
+            (
+                "Some cells hold a number followed by a unit (for example 12 kg) while others are plain numbers, so the column cannot be summed or sorted.",
+                "บางเซลล์เป็นตัวเลขตามด้วยหน่วย (เช่น 12 กก.) บางเซลล์เป็นตัวเลขล้วน ทำให้รวมยอดหรือเรียงลำดับไม่ได้",
+            ),
+            (
+                "Keep only the number in the column and put the unit in the column name (for example weight_kg).",
+                "เก็บเฉพาะตัวเลขในคอลัมน์ แล้วใส่หน่วยไว้ในชื่อคอลัมน์ (เช่น weight_kg)",
+            ),
+            code="unit_numbers",
         )
     if text_number_columns:
         add(
@@ -1085,6 +1101,7 @@ def analyze(
     context_warnings: list[dict] = []
     variant_columns: list[tuple[str, int, str]] = []
     email_columns: list[str] = []
+    unit_columns: list[str] = []
     today = datetime.datetime.now(tz=datetime.UTC).date()
     # JSON records have no header line, so they are numbered from 1.
     row_shift = -1 if source_format == "json" else 0
@@ -1132,6 +1149,12 @@ def analyze(
             inferred = "identifier"
         if dtype_is_email_candidate(values, email_hits):
             email_columns.append(name)
+        if inferred in {"categorical", "numeric"} and values.size >= 4:
+            unit_hits = int(_map_unique(values, lambda value: bool(UNIT_NUMBER.fullmatch(value.strip()))).sum())
+            plain_hits = int(_map_unique(values, lambda value: bool(PLAIN_NUMBER.fullmatch(value.strip()))).sum())
+            suffixes = {m.group(1).lower().rstrip(".") for v in values.unique() if (m := UNIT_NUMBER.fullmatch(v.strip()))}
+            if len(suffixes) <= 3 and unit_hits >= 2 and unit_hits >= 0.3 * values.size and (unit_hits + plain_hits) >= 0.8 * values.size:
+                unit_columns.append(name)
         pattern = _detect_personal_pattern(name, values)
         if pattern and name not in type_overrides:
             inferred = "identifier"
@@ -1443,6 +1466,7 @@ def analyze(
         ignored_warnings=ignored_warnings,
         hidden_content=hidden_content,
         text_number_columns=text_number_columns,
+        unit_columns=unit_columns,
         totals_row=totals_row,
     )
     numeric_names = list(numeric)

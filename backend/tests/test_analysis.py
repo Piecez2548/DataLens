@@ -745,7 +745,7 @@ def test_redact_removes_the_chosen_columns_and_nothing_else():
 
 def test_type_conflicts_name_the_offending_values():
     result = analyze(b"id,amount\n1,10\n2,N/A\n3,20\n4,oops\n5,30\n", "m.csv")
-    detail = next(i["detail"] for i in result["executive"]["issues"] if "conflict" in i["title"])
+    detail = next(i["detail"] for i in result["executive"]["issues"] if "do not fit" in i["title"])
     assert "amount" in detail and "'N/A'" in detail
 
 
@@ -832,3 +832,29 @@ def test_a_totals_row_that_equals_the_sum_above_is_flagged():
     assert "totals" not in not_sum["issue_samples"]["kinds"]
     thai = analyze("id,team,amount\n1,a,10\n2,b,20\nรวม,,30\n".encode(), "t.csv")
     assert "totals" in thai["issue_samples"]["kinds"]
+
+
+def test_numbers_mixed_with_units_are_reported():
+    data = "id,item,weight\n1,a,12 kg\n2,b,5kg\n3,c,7 kg\n4,d,9\n5,e,10 kg\n6,f,11\n7,g,8\n8,h,6\n".encode()
+    result = analyze(data, "units.csv")
+    assert any("units" in issue["title"] for issue in result["executive"]["issues"])
+    assert result["executive"]["status"] == "Review needed"
+
+
+def test_product_codes_are_not_mistaken_for_units():
+    data = "id,code\n1,10A\n2,20B\n3,30C\n4,40D\n5,50E\n".encode()
+    result = analyze(data, "codes.csv")
+    assert not any("units" in issue["title"] for issue in result["executive"]["issues"])
+
+
+def test_thai_windows_874_file_with_special_characters_reads_cleanly():
+    text = "ชื่อ,จำนวน\nสมชาย ใจดี,10\nสมหญิง “ดี”,12\nวิชัย ศรี,9\n"
+    result = analyze(text.encode("cp874", errors="replace"), "thai.csv")
+    assert result["rows"] == 3
+    assert result["columns"][0]["name"] == "ชื่อ"
+
+
+def test_mixed_date_formats_in_one_column_stay_dates():
+    data = "id,date\n1,15/03/2024\n2,2024-03-15\n3,16/03/2024\n4,2024-03-17\n5,18/03/2024\n6,2024-03-19\n".encode()
+    result = analyze(data, "dates.csv")
+    assert next(c for c in result["columns"] if c["name"] == "date")["type"] == "datetime"
