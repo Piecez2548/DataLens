@@ -549,3 +549,45 @@ test("settings are remembered for next month's file with a different number in i
   await page.getByLabel("Upload CSV file").setInputFiles({ name: "refunds-2569-02.csv", mimeType: "text/csv", buffer: body });
   await expect(page.getByRole("heading", { name: "Ready to send" })).toBeVisible();
 });
+
+test("warns that Excel would drop leading zeros from a CSV", async ({ page }) => {
+  const nl = String.fromCharCode(10);
+  const csv = ["id,zip", "1,01000", "2,02000", "3,10110"].join(nl) + nl;
+  await page.goto("/");
+  await page.getByLabel(/I am allowed to analyze this file/).check();
+  await page.getByLabel("Upload CSV file").setInputFiles({ name: "zips.csv", mimeType: "text/csv", buffer: Buffer.from(csv) });
+  await expect(page.getByText(/Leading zeros in zip may be lost in Excel/).first()).toBeVisible();
+});
+
+test("offers to compare with the last check of a file with the same name pattern", async ({ page }) => {
+  const nl = String.fromCharCode(10);
+  const january = ["id,amount", "1,10", "2,20", "3,30"].join(nl) + nl;
+  const february = ["id,amount", "1,10", "2,20", "3,30", "4,40"].join(nl) + nl;
+  await page.goto("/");
+  await page.getByLabel(/I am allowed to analyze this file/).check();
+  await page.getByLabel("Upload CSV file").setInputFiles({ name: "sales-01.csv", mimeType: "text/csv", buffer: Buffer.from(january) });
+  await expect(page.getByRole("heading", { name: "Ready to send" })).toBeVisible();
+  await page.getByRole("button", { name: "Clear dataset" }).click();
+  await page.getByLabel(/I am allowed to analyze this file/).check();
+  await page.getByLabel("Upload CSV file").setInputFiles({ name: "sales-02.csv", mimeType: "text/csv", buffer: Buffer.from(february) });
+  await expect(page.getByText("A file with this name was checked before")).toBeVisible();
+  await page.getByRole("button", { name: "Compare with last time" }).click();
+  await expect(page.getByRole("heading", { name: "Compare files" })).toBeVisible();
+});
+
+test("copies a short summary for an email", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  const nl = String.fromCharCode(10);
+  await page.goto("/");
+  await page.getByLabel(/I am allowed to analyze this file/).check();
+  await page.getByLabel("Upload CSV file").setInputFiles({
+    name: "copy.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from(["id,amount", "1,10", "2,20"].join(nl) + nl),
+  });
+  await page.getByRole("button", { name: "Copy short summary" }).click();
+  await expect(page.getByRole("button", { name: "Copied" })).toBeVisible();
+  const text = await page.evaluate(() => navigator.clipboard.readText());
+  expect(text).toContain("copy.csv");
+  expect(text).toContain("2 rows");
+});

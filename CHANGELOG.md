@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Warns when Excel would damage a CSV on opening: leading zeros dropped, numbers over 15 digits rounded, text like 1-2 turned into dates.
+- Offers to compare with the last check of a file with the same name pattern (totals only are kept in the browser, never cell values).
+- "Copy short summary" button for pasting into an email or chat.
+
 - Numbers mixed with units in one column (12 kg next to 9) are now reported.
 - Settings remembered for a file are reused for next month's file when only the digits in its name change.
 - Finding texts rewritten in plainer Thai and English (no IQR, "auditable", "executive use").

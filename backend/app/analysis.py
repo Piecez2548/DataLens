@@ -168,6 +168,8 @@ def _is_valid_date(value: str, order: str = "dmy") -> bool:
 
 TOTAL_LABEL = re.compile(r"^\s*(?:grand\s+)?(?:sub)?totals?\b|^\s*sum\b|^\s*(?:ยอด)?รวม", re.IGNORECASE)
 UNIT_NUMBER = re.compile(r"[-+]?\d[\d,]*(?:\.\d+)?\s*([^\W\d_]{1,8}\.?)")
+CODE_NAME = re.compile(r"zip|postal|post_?code|code|phone|tel|mobile|รหัส|ไปรษณีย์|โทร", re.IGNORECASE)
+DATE_LIKE_TEXT = re.compile(r"\d{1,2}\s*[-/]\s*\d{1,2}")
 AMOUNT_NAME = re.compile(r"amount|price|total|qty|quantity|revenue|cost|salary|ราคา|จำนวน|ยอด|เงิน", re.IGNORECASE)
 PAST_DATE_NAME = re.compile(r"order|created|signup|sign_up|birth|dob|joined|sent|paid|invoice|delivered|สั่ง|เกิด|สร้าง|ออก|ส่ง", re.IGNORECASE)
 SERIAL_DATE_NAME = re.compile(r"date|time|due|deadline|created|updated|birth|dob|วันที่|วัน|กำหนด", re.IGNORECASE)
@@ -561,6 +563,7 @@ def _executive_summary(
     hidden_content: dict,
     text_number_columns: list[str],
     unit_columns: list[str],
+    excel_risks: dict[str, list[str]],
     totals_row: int | None,
 ) -> dict:
     """Build the executive summary in English and Thai; the English `status` stays canonical for workflow checks."""
@@ -778,6 +781,51 @@ def _executive_summary(
                 "เลิกซ่อนแล้วตรวจสอบ หรือลบออกก่อนส่ง",
             ),
             code="hidden_content",
+        )
+    if excel_risks["zeros"]:
+        names = ", ".join(excel_risks["zeros"][:3])
+        add(
+            "medium",
+            (f"Leading zeros in {names} may be lost in Excel", f"เลขศูนย์นำหน้าใน {names} อาจหายเมื่อเปิดด้วย Excel"),
+            (
+                "Excel turns codes such as 01000 into the number 1000 when it opens a CSV file.",
+                "Excel จะเปลี่ยนรหัสอย่าง 01000 เป็นตัวเลข 1000 เมื่อเปิดไฟล์ CSV",
+            ),
+            (
+                "Send the file as .xlsx with the column formatted as text, or tell the recipient to import the column as text.",
+                "ส่งเป็นไฟล์ .xlsx โดยตั้งคอลัมน์เป็นข้อความ หรือแจ้งผู้รับให้นำเข้าคอลัมน์นี้เป็นข้อความ",
+            ),
+            code="excel_zeros",
+        )
+    if excel_risks["long"]:
+        names = ", ".join(excel_risks["long"][:3])
+        add(
+            "medium",
+            (f"Very long numbers in {names} will be rounded by Excel", f"ตัวเลขยาวมากใน {names} จะถูก Excel ปัดเศษ"),
+            (
+                "Excel keeps only 15 digits, so account or card numbers longer than that end in zeros and may show as 1.23E+15.",
+                "Excel เก็บได้เพียง 15 หลัก เลขบัญชีหรือเลขบัตรที่ยาวกว่านั้นจะลงท้ายด้วยศูนย์และอาจแสดงเป็น 1.23E+15",
+            ),
+            (
+                "Send as .xlsx with the column formatted as text, or have the recipient import the column as text.",
+                "ส่งเป็น .xlsx โดยตั้งคอลัมน์เป็นข้อความ หรือให้ผู้รับนำเข้าคอลัมน์เป็นข้อความ",
+            ),
+            code="excel_long",
+        )
+    if excel_risks["datelike"]:
+        names = ", ".join(excel_risks["datelike"][:3])
+        add(
+            "medium",
+            (f"Text in {names} will be turned into dates by Excel", f"ข้อความใน {names} จะถูก Excel แปลงเป็นวันที่"),
+            (
+                "Values such as 1-2 or 3/4 become dates (2 Jan, 4 Mar) when a CSV is opened in Excel.",
+                "ค่าอย่าง 1-2 หรือ 3/4 จะกลายเป็นวันที่ (2 ม.ค., 4 มี.ค.) เมื่อเปิดไฟล์ CSV ใน Excel",
+            ),
+            (
+                "Send as .xlsx with the column formatted as text, or write the values differently (for example 1 to 2).",
+                "ส่งเป็น .xlsx โดยตั้งคอลัมน์เป็นข้อความ หรือเขียนค่าให้ต่างไป (เช่น 1 ถึง 2)",
+            ),
+            code="excel_datelike",
         )
     if unit_columns:
         add(
@@ -1102,6 +1150,7 @@ def analyze(
     variant_columns: list[tuple[str, int, str]] = []
     email_columns: list[str] = []
     unit_columns: list[str] = []
+    excel_risks: dict[str, list[str]] = {"zeros": [], "long": [], "datelike": []}
     today = datetime.datetime.now(tz=datetime.UTC).date()
     # JSON records have no header line, so they are numbered from 1.
     row_shift = -1 if source_format == "json" else 0
@@ -1156,6 +1205,17 @@ def analyze(
             suffixes = {m.group(1).lower().rstrip(".") for v in values.unique() if (m := UNIT_NUMBER.fullmatch(v.strip()))}
             if len(suffixes) <= 3 and unit_hits >= 2 and unit_hits >= 0.3 * values.size and (unit_hits + plain_hits) >= 0.8 * values.size:
                 unit_columns.append(name)
+        if source_format != "xlsx" and values.size:
+            text_values = values.astype(str)
+            zero_hits = int(_map_unique(text_values, lambda v: bool(re.fullmatch(r"0\d+", v))).sum())
+            digit_hits = int(_map_unique(text_values, lambda v: v.isdigit()).sum())
+            if zero_hits and (zero_hits >= 0.5 * values.size or (CODE_NAME.search(name) and digit_hits == values.size)):
+                excel_risks["zeros"].append(name)
+            if int(_map_unique(text_values, lambda v: v.isdigit() and len(v) >= 16).sum()):
+                excel_risks["long"].append(name)
+            date_hits = int(_map_unique(text_values, lambda v: bool(DATE_LIKE_TEXT.fullmatch(v))).sum())
+            if date_hits >= 2 and date_hits >= 0.3 * values.size and not (kinds == "datetime").any():
+                excel_risks["datelike"].append(name)
         pattern = _detect_personal_pattern(name, values)
         if pattern and name not in type_overrides:
             inferred = "identifier"
@@ -1469,6 +1529,7 @@ def analyze(
         hidden_content=hidden_content,
         text_number_columns=text_number_columns,
         unit_columns=unit_columns,
+        excel_risks=excel_risks,
         totals_row=totals_row,
     )
     numeric_names = list(numeric)

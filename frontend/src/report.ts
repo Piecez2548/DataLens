@@ -1,6 +1,6 @@
 import type { Analysis, FollowUps, SheetSummary } from "./types";
 import { issueKindLabels } from "./issueExport";
-import { getLanguage, t, tReason, tStatus } from "./i18n";
+import { getLanguage, t, tf, tReason, tStatus } from "./i18n";
 
 const escapeHtml = (value: unknown) =>
   String(value ?? "")
@@ -139,4 +139,22 @@ export function printExecutiveReport(data: Analysis, extras?: ReportExtras): boo
   });
   window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
   return true;
+}
+
+/** A few plain lines to paste into an email or chat when sending the file. */
+export function summaryText(data: Analysis): string {
+  const executive = getLanguage() === "th" ? data.executive.thai : data.executive;
+  const cells = Math.max(data.rows * data.column_count, 1);
+  const lines = [
+    `${data.filename}: ${tStatus(data.executive.status)}`,
+    tf("{rows} rows, {columns} columns", { rows: data.rows.toLocaleString(), columns: data.column_count.toLocaleString() }),
+    tf("Empty cells: {percent}%; repeated rows: {duplicates}", {
+      percent: ((data.missing / cells) * 100).toFixed(1),
+      duplicates: data.duplicates.toLocaleString(),
+    }),
+  ];
+  const important = executive.issues.filter((issue) => issue.severity !== "info").slice(0, 3);
+  if (important.length) lines.push(`${t("To note:")} ${important.map((issue) => issue.title).join("; ")}`);
+  else lines.push(t("No problems found by DataLens."));
+  return lines.join("\n");
 }

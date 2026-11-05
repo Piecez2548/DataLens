@@ -7,6 +7,7 @@ import {
   Check,
   CircleAlert,
   Database,
+  Copy,
   Printer,
   FileSpreadsheet,
   Moon,
@@ -18,11 +19,12 @@ import {
 import type { Analysis, BusinessRule, FollowUp, FollowUps, SheetSummary } from "./types";
 import { buildSnapshot, downloadSnapshot, isSnapshotName, parseSnapshot } from "./snapshot";
 import { forgetSettings, loadSettings, saveSettings, type SavedSettings } from "./savedSettings";
+import { loadLastResult, saveLastResult, type LastResult } from "./lastResult";
 import SheetOverview from "./SheetOverview";
 import SendCheck from "./SendCheck";
 const downloadProblemRowsXlsx = (data: Analysis) => import("./issueExport").then((module) => module.downloadProblemRowsXlsx(data));
 import { allowedFile, checkSentSize, MAX_TEXT_MB, MAX_UPLOAD_MB, prepareUpload } from "./upload";
-import { downloadExecutiveReport, printExecutiveReport } from "./report";
+import { downloadExecutiveReport, printExecutiveReport, summaryText } from "./report";
 const RulesPanel = lazy(() => import("./Rules").then((module) => ({ default: module.RulesPanel })));
 import ChartBoundary from "./ChartBoundary";
 const Compare = lazy(() => import("./Compare"));
@@ -121,6 +123,9 @@ export default function App() {
   const [snapshotInfo, setSnapshotInfo] = useState("");
   const [restored, setRestored] = useState(false);
   const [other, setOther] = useState<Analysis | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [otherIsBaseline, setOtherIsBaseline] = useState(false);
+  const [lastTime, setLastTime] = useState<LastResult | null>(null);
   const compareInput = useRef<HTMLInputElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const uploadTrigger = useRef<HTMLButtonElement>(null);
@@ -226,6 +231,7 @@ export default function App() {
     setBusy(true);
     setError("");
     try {
+      setOtherIsBaseline(false);
       setOther(isSnapshotName(file.name) ? parseSnapshot(await file.text()).analysis : await requestAnalysis(file, "auto"));
       setTab("Compare");
     } catch (e) {
@@ -336,6 +342,12 @@ export default function App() {
           : (schema?.group_by ?? (fresh ? used?.group_by : groupBy.by ? { by: groupBy.by, measure: groupBy.measure || undefined } : undefined));
       if (effectiveGroup) nextSettings.group_by = effectiveGroup;
       saveSettings(file.name, nextSettings);
+      if (fresh) {
+        const previous = loadLastResult(file.name);
+        const different = previous && previous.analysis.provenance.sha256 !== result.provenance.sha256;
+        setLastTime(different ? previous : null);
+        if (!previous || different) saveLastResult(file.name, result);
+      }
       setData(result);
       setLastFile(file);
       setColumnNames(result.columns.map((item) => item.name));
@@ -383,6 +395,7 @@ export default function App() {
       const result = snapshot.analysis;
       setData(result);
       setOther(null);
+      setLastTime(null);
       setLastFile(null);
       setFollowUps(snapshot.follow_ups);
       setSheetOverview(snapshot.sheet_overview);
@@ -459,6 +472,8 @@ export default function App() {
   }
   function clearDataset() {
     setData(null);
+    setLastTime(null);
+    setCopied(false);
     setOther(null);
     setSheetName("");
     setHeaderRow("");
@@ -692,6 +707,20 @@ export default function App() {
                   </button>
                   <button
                     className="report-button"
+                    onClick={() => {
+                      void navigator.clipboard
+                        .writeText(summaryText(data))
+                        .then(() => {
+                          setCopied(true);
+                          window.setTimeout(() => setCopied(false), 2500);
+                        })
+                        .catch(() => setError("Your browser did not allow copying. Select the text in the report instead."));
+                    }}
+                  >
+                    <Copy size={15} /> {copied ? t("Copied") : t("Copy short summary")}
+                  </button>
+                  <button
+                    className="report-button"
                     onClick={() => downloadSnapshot(buildSnapshot(data, followUps, sheetOverview))}
                   >
                     <Upload size={15} /> {t("Save snapshot")}
@@ -744,6 +773,29 @@ export default function App() {
                           })}
                         </p>
                       </div>
+                    </section>
+                  )}
+                  {lastTime && (
+                    <section className="header-notice" role="status">
+                      <FileSpreadsheet size={20} />
+                      <div>
+                        <strong>{t("A file with this name was checked before")}</strong>
+                        <p>
+                          {tf("Last check: {when}, {rows} rows. Compare to see rows, columns and problems that changed.", {
+                            when: new Date(lastTime.saved_at).toLocaleDateString(),
+                            rows: lastTime.analysis.rows.toLocaleString(),
+                          })}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setOther(lastTime.analysis);
+                          setOtherIsBaseline(true);
+                          setTab("Compare");
+                        }}
+                      >
+                        {t("Compare with last time")}
+                      </button>
                     </section>
                   )}
                   {restored && lastFile && (
@@ -1142,7 +1194,7 @@ export default function App() {
                 />
               )}
               {tab === "Compare" && other && (
-                <Compare base={data} other={other} onClose={() => { setOther(null); setTab("Overview"); }} />
+                <Compare base={otherIsBaseline ? other : data} other={otherIsBaseline ? data : other} onClose={() => { setOther(null); setTab("Overview"); }} />
               )}
               {tab === "Data quality" && (
                 <>

@@ -858,3 +858,31 @@ def test_mixed_date_formats_in_one_column_stay_dates():
     data = b"id,date\n1,15/03/2024\n2,2024-03-15\n3,16/03/2024\n4,2024-03-17\n5,18/03/2024\n6,2024-03-19\n"
     result = analyze(data, "dates.csv")
     assert next(c for c in result["columns"] if c["name"] == "date")["type"] == "datetime"
+
+
+def _issue_titles(result):
+    return " | ".join(issue["title"] for issue in result["executive"]["issues"])
+
+
+def test_csv_leading_zeros_long_numbers_and_date_like_text_are_reported():
+    data = b"id,zip,account,range\n1,01000,1234567890123456,1-2\n2,10110,9234567890123456,3-4\n3,02000,8234567890123456,5-6\n4,03000,7234567890123456,7-8\n"
+    titles = _issue_titles(analyze(data, "risk.csv"))
+    assert "Leading zeros in zip" in titles
+    assert "Very long numbers in account" in titles
+    assert "Text in range will be turned into dates" in titles
+
+
+def test_excel_risks_are_not_raised_for_ordinary_columns_or_xlsx():
+    data = b"id,qty,note\n1,10,a\n2,20,b\n3,30,c\n"
+    assert "Excel" not in _issue_titles(analyze(data, "ok.csv"))
+    import io
+
+    import openpyxl
+
+    book = openpyxl.Workbook()
+    book.active.append(["id", "zip"])
+    for row in (["1", "01000"], ["2", "02000"], ["3", "03000"]):
+        book.active.append(row)
+    buffer = io.BytesIO()
+    book.save(buffer)
+    assert "Leading zeros" not in _issue_titles(analyze(buffer.getvalue(), "z.xlsx"))
