@@ -924,3 +924,10 @@ def test_draft_file_names_and_default_sheet_names_are_noted():
     book.save(buffer)
     result = analyze(buffer.getvalue(), "book.xlsx")
     assert any("default name" in i["title"] for i in result["executive"]["issues"])
+
+
+def test_a_warning_kind_can_be_ignored_for_every_column():
+    data = b"id,amount,price\n1,-5,-1\n2,10,-2\n3,20,3\n"
+    assert "negative" in _issue_titles(analyze(data, "n.csv"))
+    quiet = analyze(data, "n.csv", ignored_warnings=["negative_amount"])
+    assert "negative" not in _issue_titles(quiet)

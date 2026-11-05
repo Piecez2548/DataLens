@@ -33,7 +33,7 @@ export function saveLastResult(filename: string, analysis: Analysis) {
     missing: analysis.missing,
     duplicates: analysis.duplicates,
     scores: analysis.scores,
-    executive: { status: analysis.executive.status },
+    executive: { status: analysis.executive.status, issue_count: analysis.executive.issue_count },
     issue_samples: { kinds },
     provenance: { sha256: analysis.provenance.sha256 },
     columns: analysis.columns.map((c) => ({ name: c.name, type: c.type, missing: c.missing, invalid: c.invalid, unique: c.unique })),

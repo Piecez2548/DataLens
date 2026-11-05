@@ -52,3 +52,24 @@ export function saveSettings(filename: string, settings: SavedSettings) {
 }
 
 export const forgetSettings = (filename: string) => saveSettings(filename, {});
+
+// Kinds of warning the person never wants to see (for example "file name looks like a draft"), for every file.
+const ALWAYS_KEY = "datalens.alwaysIgnore";
+export const warningKind = (code: string) => code.split(":")[0];
+
+export function loadAlwaysIgnored(): string[] {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(ALWAYS_KEY) ?? "[]");
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string").slice(0, 40) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveAlwaysIgnored(kinds: string[]) {
+  try {
+    window.localStorage.setItem(ALWAYS_KEY, JSON.stringify(kinds));
+  } catch {
+    /* the choice then lasts for this visit only */
+  }
+}

@@ -22,7 +22,7 @@ function buildReport(data: Analysis, extras: ReportExtras = {}) {
     .map(
       ([label, score]) => `
         <article class="score-card">
-          <span>${escapeHtml(label)}</span>
+          <span>${escapeHtml(t(label))}</span>
           <strong>${score === null ? "N/A" : `${number(score)}%`}</strong>
         </article>`,
     )
@@ -42,10 +42,10 @@ function buildReport(data: Analysis, extras: ReportExtras = {}) {
           </article>`,
         )
         .join("")
-    : '<p class="positive">${t("No structural issue was found by the current checks.")}</p>';
+    : `<p class="positive">${escapeHtml(t("No structural issue was found by the current checks."))}</p>`;
   const signals = executive.signals.length
     ? `<ul>${executive.signals.map((signal) => `<li>${escapeHtml(signal)}</li>`).join("")}</ul>`
-    : "<p>No statistical relationship met the reporting threshold.</p>";
+    : `<p>${escapeHtml(t("No statistical relationship met the reporting threshold."))}</p>`;
   const outlierRows = data.columns
     .filter((column) => column.outliers > 0)
     .map(
@@ -68,7 +68,7 @@ function buildReport(data: Analysis, extras: ReportExtras = {}) {
           (item) =>
             `<tr><td>${number(item.row)}</td><td>${escapeHtml(item.column ?? t("(entire row)"))}</td><td>${escapeHtml(item.value ?? "")}</td><td>${escapeHtml(tReason(item.reason))}</td></tr>`,
         )
-        .join("")}</tbody></table>${entry.total > shown.length ? `<p>First ${shown.length} of ${number(entry.total)} shown. Use the issue-list export for the full list.</p>` : ""}`;
+        .join("")}</tbody></table>${entry.total > shown.length ? `<p>${escapeHtml(tf("First {shown} of {total} shown. Use the issue-list export for the full list.", { shown: String(shown.length), total: number(entry.total) }))}</p>` : ""}`;
     })
     .join("");
   const followUpRows = Object.entries(extras.followUps ?? {})

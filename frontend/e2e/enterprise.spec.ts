@@ -623,3 +623,40 @@ test("notes a draft-looking file name", async ({ page }) => {
   });
   await expect(page.getByText("The file name looks like a draft").first()).toBeVisible();
 });
+
+test("a kind of warning can be switched off for every file and turned back on", async ({ page }) => {
+  const nl = String.fromCharCode(10);
+  const make = (name: string) => ({
+    name,
+    mimeType: "text/csv",
+    buffer: Buffer.from(["id,amount", "1,100", "2,-20", "3,50"].join(nl) + nl),
+  });
+  await page.goto("/");
+  await page.getByLabel(/I am allowed to analyze this file/).check();
+  await page.getByLabel("Upload CSV file").setInputFiles(make("one.csv"));
+  await expect(page.getByRole("heading", { name: "Check before sending" })).toBeVisible();
+  await page.getByRole("button", { name: "Never show this kind of warning" }).click();
+  await expect(page.getByRole("heading", { name: "Ready to send" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Clear dataset" }).click();
+  await page.getByLabel(/I am allowed to analyze this file/).check();
+  await page.getByLabel("Upload CSV file").setInputFiles(make("other-name.csv"));
+  await expect(page.getByRole("heading", { name: "Ready to send" })).toBeVisible();
+
+  await page.getByRole("button", { name: /Negative amounts — Turn back on/ }).click();
+  await expect(page.getByRole("heading", { name: "Check before sending" })).toBeVisible();
+});
+
+test("shows how many problems were fixed since the last check of the same file", async ({ page }) => {
+  const nl = String.fromCharCode(10);
+  const before = ["id,amount", "1,100", "2,", "3,", "4,40"].join(nl) + nl;
+  const after = ["id,amount", "1,100", "2,20", "3,", "4,40"].join(nl) + nl;
+  await page.goto("/");
+  await page.getByLabel(/I am allowed to analyze this file/).check();
+  await page.getByLabel("Upload CSV file").setInputFiles({ name: "fix.csv", mimeType: "text/csv", buffer: Buffer.from(before) });
+  await expect(page.getByRole("button", { name: "Clear dataset" })).toBeVisible();
+  await page.getByRole("button", { name: "Clear dataset" }).click();
+  await page.getByLabel(/I am allowed to analyze this file/).check();
+  await page.getByLabel("Upload CSV file").setInputFiles({ name: "fix.csv", mimeType: "text/csv", buffer: Buffer.from(after) });
+  await expect(page.getByText(/Since then: 1 problem\(s\) fixed, 1 left, 0 new/)).toBeVisible();
+});

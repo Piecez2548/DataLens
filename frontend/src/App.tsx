@@ -1,4 +1,4 @@
-import { getLanguage, setLanguage, t, tError, tf, tStatus, type Lang } from "./i18n";
+import { getLanguage, setLanguage, t, tError, tf, tStatus, warningKindLabels, type Lang } from "./i18n";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import {
   Aperture,
@@ -18,7 +18,15 @@ import {
 } from "lucide-react";
 import type { Analysis, BusinessRule, FollowUp, FollowUps, SheetSummary } from "./types";
 import { buildSnapshot, downloadSnapshot, isSnapshotName, parseSnapshot } from "./snapshot";
-import { forgetSettings, loadSettings, saveSettings, type SavedSettings } from "./savedSettings";
+import {
+  forgetSettings,
+  loadAlwaysIgnored,
+  loadSettings,
+  saveAlwaysIgnored,
+  saveSettings,
+  warningKind,
+  type SavedSettings,
+} from "./savedSettings";
 import { loadLastResult, saveLastResult, type LastResult } from "./lastResult";
 import BatchResults, { type BatchRow } from "./BatchResults";
 import SheetOverview from "./SheetOverview";
@@ -119,6 +127,13 @@ export default function App() {
   const [groupBy, setGroupBy] = useState({ by: "", measure: "" });
   const [yearEra, setYearEra] = useState<"" | "be" | "ce">("");
   const [ignoredWarnings, setIgnoredWarnings] = useState<string[]>([]);
+  const [alwaysIgnored, setAlwaysIgnoredState] = useState<string[]>(loadAlwaysIgnored);
+  const alwaysRef = useRef(alwaysIgnored);
+  function setAlwaysIgnored(next: string[]) {
+    alwaysRef.current = next;
+    saveAlwaysIgnored(next);
+    setAlwaysIgnoredState(next);
+  }
   const [followUps, setFollowUps] = useState<FollowUps>({});
   const [sheetOverview, setSheetOverview] = useState<SheetSummary[]>([]);
   const [snapshotInfo, setSnapshotInfo] = useState("");
@@ -155,7 +170,10 @@ export default function App() {
             : (schema?.header_row ?? (headerRow ? Number(headerRow) : undefined)),
         date_order: schema?.date_order ?? (dateOrder || undefined),
         year_era: schema?.year_era ?? (yearEra || undefined),
-        ignored_warnings: schema?.ignored_warnings ?? (ignoredWarnings.length ? ignoredWarnings : undefined),
+        ignored_warnings: (() => {
+          const merged = Array.from(new Set([...(schema?.ignored_warnings ?? ignoredWarnings), ...alwaysRef.current]));
+          return merged.length ? merged : undefined;
+        })(),
         business_key: schema?.business_key ?? (keyColumns.length ? keyColumns : undefined),
         group_by:
           schema?.group_by === null
@@ -406,7 +424,7 @@ export default function App() {
       setColumnTypes(result.columns.map((item) => (item.type_overridden ? item.type : "auto")));
       setSelected(result.columns.find((c) => c.type === "numeric")?.name ?? result.columns[0].name);
       setRestored(false);
-      setIgnoredWarnings(result.provenance.ignored_warnings ?? []);
+      setIgnoredWarnings((result.provenance.ignored_warnings ?? []).filter((code) => !alwaysIgnored.includes(warningKind(code))));
       setPage(0);
       setTab("Overview");
       setSnapshotInfo(snapshot.saved_at);
@@ -539,6 +557,28 @@ export default function App() {
     window.setTimeout(() => uploadTrigger.current?.focus(), 0);
   }
   const column = data?.columns.find((c) => c.name === selected);
+  const fixProgress = (() => {
+    if (!lastTime || !data) return null;
+    const before = lastTime.analysis.issue_samples.kinds;
+    const after = data.issue_samples.kinds;
+    let fixed = 0;
+    let added = 0;
+    let left = 0;
+    for (const kind of new Set([...Object.keys(before), ...Object.keys(after)])) {
+      const was = before[kind]?.total ?? 0;
+      const now = after[kind]?.total ?? 0;
+      fixed += Math.max(0, was - now);
+      added += Math.max(0, now - was);
+      left += now;
+    }
+    return {
+      fixed: fixed.toLocaleString(),
+      left: left.toLocaleString(),
+      added: added.toLocaleString(),
+      before: (lastTime.analysis.executive.issue_count ?? 0).toLocaleString(),
+      after: data.executive.issue_count.toLocaleString(),
+    };
+  })();
   return (
     <div className={dark ? "app dark" : "app"}>
       <aside>
@@ -834,6 +874,11 @@ export default function App() {
                             rows: lastTime.analysis.rows.toLocaleString(),
                           })}
                         </p>
+                        {fixProgress && (
+                          <p>
+                            {tf("Since then: {fixed} problem(s) fixed, {left} left, {added} new. Items to review: {before} → {after}.", fixProgress)}
+                          </p>
+                        )}
                       </div>
                       <button
                         onClick={() => {
@@ -923,6 +968,17 @@ export default function App() {
                     onRestore={() => {
                       setIgnoredWarnings([]);
                       rerun({ ignored_warnings: [] });
+                    }}
+                    alwaysIgnored={alwaysIgnored}
+                    onAlwaysIgnore={(kind) => {
+                      const next = Array.from(new Set([...alwaysIgnored, kind]));
+                      setAlwaysIgnored(next);
+                      rerun({ ignored_warnings: ignoredWarnings });
+                    }}
+                    onAlwaysRestore={(kind) => {
+                      const next = alwaysIgnored.filter((item) => item !== kind);
+                      setAlwaysIgnored(next);
+                      rerun({ ignored_warnings: ignoredWarnings });
                     }}
                   />
                   <SendCheck
@@ -1517,12 +1573,18 @@ function ExecutiveBrief({
   canIgnore,
   onIgnore,
   onRestore,
+  alwaysIgnored,
+  onAlwaysIgnore,
+  onAlwaysRestore,
 }: {
   data: Analysis;
   busy: boolean;
   canIgnore: boolean;
   onIgnore: (code: string) => void;
   onRestore: () => void;
+  alwaysIgnored: string[];
+  onAlwaysIgnore: (kind: string) => void;
+  onAlwaysRestore: (kind: string) => void;
 }) {
   const executive = getLanguage() === "th" ? data.executive.thai : data.executive;
   const tone =
@@ -1561,9 +1623,18 @@ function ExecutiveBrief({
                   <strong>{t("Next:")}</strong> {issue.recommendation}
                 </small>
                 {issue.code && canIgnore && (
-                  <button className="text-button ignore-warning" disabled={busy} onClick={() => onIgnore(issue.code as string)}>
-                    {t("Ignore this warning")}
-                  </button>
+                  <>
+                    <button className="text-button ignore-warning" disabled={busy} onClick={() => onIgnore(issue.code as string)}>
+                      {t("Ignore this warning")}
+                    </button>
+                    <button
+                      className="text-button ignore-warning"
+                      disabled={busy}
+                      onClick={() => onAlwaysIgnore(warningKind(issue.code as string))}
+                    >
+                      {t("Never show this kind of warning")}
+                    </button>
+                  </>
                 )}
               </div>
             </article>
@@ -1581,6 +1652,16 @@ function ExecutiveBrief({
               {t("Show them again")}
             </button>
           )}
+        </p>
+      )}
+      {alwaysIgnored.length > 0 && (
+        <p className="signal">
+          {t("Warnings you turned off for every file:")}{" "}
+          {alwaysIgnored.map((kind) => (
+            <button key={kind} className="text-button" disabled={busy || !canIgnore} onClick={() => onAlwaysRestore(kind)}>
+              {t(warningKindLabels[kind] ?? kind)} — {t("Turn back on")}
+            </button>
+          ))}
         </p>
       )}
       {executive.signals.map((signal) => (

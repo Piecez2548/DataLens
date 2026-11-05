@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- A kind of warning can be switched off for every file ("Never show this kind of warning") and turned back on from the check summary.
+- When a file with the same name is uploaded again, the notice says how many problems were fixed since the last check.
+- Printed/shared report: the "no issues" sentence showed as raw code, and score labels and two notes ignored the chosen language; fixed.
+
 - Cross-column checks: an end date earlier than its start date, and a total that is not quantity × unit price when most rows follow that rule.
 - Notes draft-looking file names (final, copy, test, (1)) and default sheet names in workbooks with several sheets.
 - Choose several files at once to see one status line per file; open any of them for the full check.

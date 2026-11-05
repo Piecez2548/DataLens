@@ -581,7 +581,7 @@ def _executive_summary(
 
     def add(severity, title, detail, recommendation, code=None):
         """`code` marks a warning the user may choose to ignore; ignored ones leave the verdict untouched."""
-        if code is not None and code in ignored_warnings:
+        if code is not None and (code in ignored_warnings or code.split(":")[0] in ignored_warnings):
             return
         issues.append(
             {"severity": severity, "title": title, "detail": detail, "recommendation": recommendation, "code": code}
