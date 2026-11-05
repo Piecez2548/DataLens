@@ -79,6 +79,7 @@ const th: Record<string, string> = {
   "Equal-weight mean of available dimensions.": "ค่าเฉลี่ยถ่วงน้ำหนักเท่ากันของมิติที่มี",
   Overview: "ภาพรวม",
   "Totals row": "แถวผลรวม",
+  "Dates or totals that do not add up": "วันที่หรือยอดรวมที่ไม่สอดคล้องกัน",
   "Before you send": "ก่อนส่ง",
   "Personal data": "ข้อมูลส่วนบุคคล",
   "None found": "ไม่พบ",
@@ -144,6 +145,12 @@ const th: Record<string, string> = {
   "{rows} rows, {columns} columns": "{rows} แถว {columns} คอลัมน์",
   "Empty cells: {percent}%; repeated rows: {duplicates}": "เซลล์ว่าง: {percent}% แถวซ้ำ: {duplicates}",
   "Your browser did not allow copying. Select the text in the report instead.": "เบราว์เซอร์ไม่อนุญาตให้คัดลอก ให้เลือกข้อความในรายงานแทน",
+  "Files checked together": "ไฟล์ที่ตรวจพร้อมกัน",
+  "Each file was checked on its own with the default settings. Open one to see its details.": "ตรวจแต่ละไฟล์แยกกันด้วยค่าตั้งต้น เปิดไฟล์ใดไฟล์หนึ่งเพื่อดูรายละเอียด",
+  "Main finding": "ข้อสังเกตหลัก",
+  "Waiting…": "รอตรวจ…",
+  "Close": "ปิด",
+  "Checking the remaining files…": "กำลังตรวจไฟล์ที่เหลือ…",
   "Settings from last time were applied": "ใช้การตั้งค่าครั้งก่อนให้แล้ว",
   "Header row, business key, date order and similar choices you made for a file with this name were reused. They are kept in this browser only.": "นำค่าที่คุณเลือกไว้สำหรับไฟล์ชื่อนี้มาใช้ซ้ำ เช่น แถวหัวตาราง คีย์ทางธุรกิจ ลำดับวันที่ โดยเก็บไว้ในเบราว์เซอร์นี้เท่านั้น",
   "Don't remember these": "ไม่ต้องจำค่าเหล่านี้",
@@ -435,6 +442,8 @@ export function t(text: string): string {
 }
 
 const reasonRules: [RegExp, (m: RegExpMatchArray) => string][] = [
+  [/^Ends before (.+)$/, (m) => `สิ้นสุดก่อน ${m[1]}`],
+  [/^(.+) is not (.+) × (.+)$/, (m) => `${m[1]} ไม่เท่ากับ ${m[2]} × ${m[3]}`],
   [/^Looks like a totals row/, () => "ดูเหมือนแถวผลรวม: เท่ากับผลบวกของแถวด้านบน"],
   [/^Spelled differently from the more common “(.*)”$/, (m) => `สะกดต่างจาก “${m[1]}” ที่พบบ่อยกว่า`],
   [/^Blank or marked as missing$/, () => "ว่างหรือถูกกำหนดให้เป็นค่าว่าง"],

@@ -170,6 +170,16 @@ TOTAL_LABEL = re.compile(r"^\s*(?:grand\s+)?(?:sub)?totals?\b|^\s*sum\b|^\s*(?:�
 UNIT_NUMBER = re.compile(r"[-+]?\d[\d,]*(?:\.\d+)?\s*([^\W\d_]{1,8}\.?)")
 CODE_NAME = re.compile(r"zip|postal|post_?code|code|phone|tel|mobile|รหัส|ไปรษณีย์|โทร", re.IGNORECASE)
 DATE_LIKE_TEXT = re.compile(r"\d{1,2}\s*[-/]\s*\d{1,2}")
+DRAFT_FILE_NAME = re.compile(
+    r"(?<![a-z])(?:final|copy|draft|test|temp|tmp|backup|untitled|new)(?![a-z])|\(\d+\)\s*$|ทดสอบ|ล่าสุด|แก้ไข|สำเนา|ฉบับร่าง", re.IGNORECASE
+)
+DEFAULT_SHEET_NAME = re.compile(r"^(?:sheet|ชีต|แผ่น(?:งาน)?)\s*\d*$", re.IGNORECASE)
+RANGE_START = re.compile(r"start|begin|from|เริ่ม", re.IGNORECASE)
+RANGE_END = re.compile(r"end|finish|until|to|สิ้นสุด|สิ้น|จบ", re.IGNORECASE)
+QTY_NAME = re.compile(r"^(?:qty|quantity|units?|จำนวน)$", re.IGNORECASE)
+UNIT_PRICE_NAME = re.compile(r"^(?:unit_?price|price|price_per_unit|ราคา(?:ต่อหน่วย)?)$", re.IGNORECASE)
+LINE_TOTAL_NAME = re.compile(r"^(?:total|line_?total|amount|total_?amount|ยอดรวม|รวมเงิน|ยอดเงิน)$", re.IGNORECASE)
+ADJUSTMENT_NAME = re.compile(r"discount|tax|vat|fee|shipping|freight|ส่วนลด|ภาษี|ค่าส่ง|ค่าธรรมเนียม", re.IGNORECASE)
 AMOUNT_NAME = re.compile(r"amount|price|total|qty|quantity|revenue|cost|salary|ราคา|จำนวน|ยอด|เงิน", re.IGNORECASE)
 PAST_DATE_NAME = re.compile(r"order|created|signup|sign_up|birth|dob|joined|sent|paid|invoice|delivered|สั่ง|เกิด|สร้าง|ออก|ส่ง", re.IGNORECASE)
 SERIAL_DATE_NAME = re.compile(r"date|time|due|deadline|created|updated|birth|dob|วันที่|วัน|กำหนด", re.IGNORECASE)
@@ -712,7 +722,57 @@ def _executive_summary(
             ),
         )
     for warning in context_warnings:
-        if warning["kind"] == "future_date":
+        if warning["kind"] == "file_name":
+            add(
+                "info",
+                ("The file name looks like a draft", "ชื่อไฟล์ดูเหมือนฉบับร่าง"),
+                (
+                    f"The name \"{warning['name']}\" contains words like final, copy, test or (1); the recipient will see it.",
+                    f"ชื่อ \"{warning['name']}\" มีคำอย่าง final, copy, test, ล่าสุด หรือ (1) ซึ่งผู้รับจะเห็น",
+                ),
+                ("Rename the file to something the recipient can understand, for example sales-2569-01.csv.", "เปลี่ยนชื่อไฟล์ให้ผู้รับเข้าใจ เช่น sales-2569-01.csv"),
+                code="file_name",
+            )
+        elif warning["kind"] == "sheet_name":
+            add(
+                "info",
+                ("A sheet still has its default name", "ชีตยังใช้ชื่อเริ่มต้น"),
+                (
+                    f"Sheet(s) named {warning['names']} sit in a workbook with several sheets, so the recipient cannot tell what each holds.",
+                    f"ชีต {warning['names']} อยู่ในสมุดงานที่มีหลายชีต ผู้รับจะแยกไม่ออกว่าแต่ละชีตคืออะไร",
+                ),
+                ("Give each sheet a name that says what it holds.", "ตั้งชื่อชีตให้บอกว่าเก็บอะไร"),
+                code="sheet_name",
+            )
+        elif warning["kind"] == "date_range":
+            add(
+                "medium",
+                (
+                    f"{warning['count']:,} rows end before they start ({warning['end']} earlier than {warning['start']})",
+                    f"มี {warning['count']:,} แถวที่สิ้นสุดก่อนเริ่มต้น ({warning['end']} เร็วกว่า {warning['start']})",
+                ),
+                (
+                    "The end date is earlier than the start date in the same row, so durations and period totals would come out wrong.",
+                    "วันที่สิ้นสุดเร็วกว่าวันที่เริ่มต้นในแถวเดียวกัน ทำให้ระยะเวลาและยอดรวมรายช่วงผิด",
+                ),
+                ("Check the two dates in these rows; they may be swapped or have a wrong year.", "ตรวจวันที่ทั้งสองในแถวเหล่านี้ อาจสลับกันหรือใส่ปีผิด"),
+                code=f"date_range:{warning['end']}",
+            )
+        elif warning["kind"] == "line_total":
+            add(
+                "medium",
+                (
+                    f"{warning['count']:,} rows where {warning['total']} is not {warning['qty']} × {warning['price']}",
+                    f"มี {warning['count']:,} แถวที่ {warning['total']} ไม่เท่ากับ {warning['qty']} × {warning['price']}",
+                ),
+                (
+                    "Most rows follow this calculation, but these rows do not, so the total or one of its parts may be mistyped.",
+                    "แถวส่วนใหญ่คำนวณแบบนี้ แต่แถวเหล่านี้ไม่ตรง ยอดรวมหรือตัวใดตัวหนึ่งอาจพิมพ์ผิด",
+                ),
+                ("Check these rows against the source, or ignore this if they include a discount or fee.", "ตรวจแถวเหล่านี้กับต้นฉบับ หรือกดข้ามถ้ามีส่วนลดหรือค่าธรรมเนียมรวมอยู่"),
+                code=f"line_total:{warning['total']}",
+            )
+        elif warning["kind"] == "future_date":
             add(
                 "medium",
                 (f"{warning['count']:,} dates in {warning['column']} are in the future", f"มี {warning['count']:,} วันที่ใน {warning['column']} ที่อยู่ในอนาคต"),
@@ -1332,6 +1392,47 @@ def analyze(
             sample("outlier", good.index[outlier_mask], name, f"Outside the 1.5×IQR range {q1 - 1.5 * iqr:,.2f} to {q3 + 1.5 * iqr:,.2f}")
             columns[-1]["outliers"] = outlier_count
             stats.update({"q1": float(q1), "q3": float(q3)})
+    stem = filename.rsplit(".", 1)[0] if "." in filename else filename
+    if DRAFT_FILE_NAME.search(stem):
+        context_warnings.append({"kind": "file_name", "name": filename})
+    default_sheets = [name for name in (sheet_names or []) if DEFAULT_SHEET_NAME.match(name.strip())]
+    if len(sheet_names or []) > 1 and default_sheets:
+        context_warnings.append({"kind": "sheet_name", "names": ", ".join(default_sheets[:3])})
+    datetime_columns = [item["name"] for item in columns if item["type"] == "datetime"]
+    for start_name in datetime_columns:
+        if not RANGE_START.search(start_name):
+            continue
+        masked = RANGE_START.sub("§", start_name)
+        for end_name in datetime_columns:
+            if end_name == start_name or not RANGE_END.search(end_name) or RANGE_END.sub("§", end_name).lower() != masked.lower():
+                continue
+            both = normalized[[start_name, end_name]].dropna()
+            if both.empty:
+                continue
+            first = _map_unique(both[start_name], lambda value: _to_date(value, chosen_date_order))
+            second = _map_unique(both[end_name], lambda value: _to_date(value, chosen_date_order))
+            reversed_rows = [
+                position
+                for position, (a, b) in zip(both.index, zip(first, second, strict=True), strict=True)
+                if a is not None and b is not None and a is not pd.NaT and b is not pd.NaT and b < a
+            ]
+            if reversed_rows:
+                sample("range", reversed_rows, end_name, f"Ends before {start_name}")
+                context_warnings.append({"kind": "date_range", "start": start_name, "end": end_name, "count": len(reversed_rows)})
+    quantity = [name for name in numeric if QTY_NAME.fullmatch(name.strip())]
+    prices = [name for name in numeric if UNIT_PRICE_NAME.fullmatch(name.strip())]
+    totals = [name for name in numeric if LINE_TOTAL_NAME.fullmatch(name.strip())]
+    if len(quantity) == 1 and len(prices) == 1 and len(totals) == 1 and not any(ADJUSTMENT_NAME.search(name) for name in headers):
+        frame_numbers = pd.DataFrame({"q": numeric[quantity[0]], "p": numeric[prices[0]], "t": numeric[totals[0]]}).dropna()
+        if len(frame_numbers) >= 3:
+            expected = frame_numbers["q"] * frame_numbers["p"]
+            agrees = (frame_numbers["t"] - expected).abs() <= np.maximum(0.01, 0.005 * frame_numbers["t"].abs())
+            if agrees.mean() >= 0.8 and not agrees.all():
+                wrong = frame_numbers.index[~agrees]
+                sample("range", wrong, totals[0], f"{totals[0]} is not {quantity[0]} × {prices[0]}")
+                context_warnings.append(
+                    {"kind": "line_total", "qty": quantity[0], "price": prices[0], "total": totals[0], "count": len(wrong)}
+                )
     if n >= 3:
         last = normalized.iloc[-1]
         labelled = any(isinstance(cell, str) and TOTAL_LABEL.search(cell) for cell in last)

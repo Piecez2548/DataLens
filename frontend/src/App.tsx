@@ -20,6 +20,7 @@ import type { Analysis, BusinessRule, FollowUp, FollowUps, SheetSummary } from "
 import { buildSnapshot, downloadSnapshot, isSnapshotName, parseSnapshot } from "./snapshot";
 import { forgetSettings, loadSettings, saveSettings, type SavedSettings } from "./savedSettings";
 import { loadLastResult, saveLastResult, type LastResult } from "./lastResult";
+import BatchResults, { type BatchRow } from "./BatchResults";
 import SheetOverview from "./SheetOverview";
 import SendCheck from "./SendCheck";
 const downloadProblemRowsXlsx = (data: Analysis) => import("./issueExport").then((module) => module.downloadProblemRowsXlsx(data));
@@ -123,6 +124,7 @@ export default function App() {
   const [snapshotInfo, setSnapshotInfo] = useState("");
   const [restored, setRestored] = useState(false);
   const [other, setOther] = useState<Analysis | null>(null);
+  const [batch, setBatch] = useState<BatchRow[] | null>(null);
   const [copied, setCopied] = useState(false);
   const [otherIsBaseline, setOtherIsBaseline] = useState(false);
   const [lastTime, setLastTime] = useState<LastResult | null>(null);
@@ -414,6 +416,44 @@ export default function App() {
       if (input.current) input.current.value = "";
     }
   }
+  async function checkSeveral(files: File[]) {
+    if (busy) return;
+    if (!authorized) {
+      setError("Confirm that you are allowed to upload this file before analysis.");
+      return;
+    }
+    const chosen = files.slice(0, 10);
+    const rows: BatchRow[] = chosen.map((file) => ({ file }));
+    setBatch(rows);
+    setBusy(true);
+    setError("");
+    for (const [index, file] of chosen.entries()) {
+      try {
+        if (!validFile(file) || isSnapshotName(file.name)) throw new Error("Choose a CSV, XLSX or JSON file no larger than 40 MB.");
+        const result = await requestAnalysis(file, "auto", {}, authorized);
+        const issues = result.executive.issues;
+        const executive = getLanguage() === "th" ? result.executive.thai : result.executive;
+        rows[index] = {
+          file,
+          status: result.executive.status,
+          rows: result.rows,
+          issues: issues.length,
+          top: executive.issues[0]?.title,
+        };
+      } catch (caught) {
+        rows[index] = { file, error: caught instanceof Error ? caught.message : "Could not analyze this file." };
+      }
+      setBatch([...rows]);
+    }
+    setBusy(false);
+  }
+  function routeFiles(files: File[]) {
+    const usable = files.filter((file) => !isSnapshotName(file.name));
+    if (usable.length > 1) {
+      void checkSeveral(usable);
+      if (input.current) input.current.value = "";
+    } else if (files[0]) routeFile(files[0]);
+  }
   function routeFile(file: File) {
     if (isSnapshotName(file.name)) void openSnapshot(file);
     else void upload(file);
@@ -573,13 +613,11 @@ export default function App() {
           <input
             ref={input}
             type="file"
+            multiple
             accept=".csv,.xlsx,.json,.jsonl,.ndjson,text/csv,application/json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             className="sr-only"
             aria-label={t("Upload CSV file")}
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) routeFile(f);
-            }}
+            onChange={(e) => routeFiles(Array.from(e.target.files ?? []))}
           />
           <input
             ref={compareInput}
@@ -618,10 +656,20 @@ export default function App() {
               onDragOver={(e) => e.preventDefault()}
               onDrop={(e) => {
                 e.preventDefault();
-                const f = e.dataTransfer.files[0];
-                if (f) routeFile(f);
+                routeFiles(Array.from(e.dataTransfer.files));
               }}
             >
+              {batch && (
+                <BatchResults
+                  rows={batch}
+                  busy={busy}
+                  onOpen={(file) => {
+                    setBatch(null);
+                    void upload(file);
+                  }}
+                  onClose={() => setBatch(null)}
+                />
+              )}
               <div className="upload-icon">
                 <FileSpreadsheet size={26} />
               </div>

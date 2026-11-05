@@ -591,3 +591,35 @@ test("copies a short summary for an email", async ({ page, context }) => {
   expect(text).toContain("copy.csv");
   expect(text).toContain("2 rows");
 });
+
+test("checks several files at once and opens one of them", async ({ page }) => {
+  const nl = String.fromCharCode(10);
+  const good = ["id,amount", "1,10", "2,20", "3,30"].join(nl) + nl;
+  const bad = ["id,start_date,end_date", "1,2024-01-01,2024-01-05", "2,2024-02-10,2024-02-01", "3,2024-03-01,2024-03-09"].join(nl) + nl;
+  await page.goto("/");
+  await page.getByLabel(/I am allowed to analyze this file/).check();
+  await page.getByLabel("Upload CSV file").setInputFiles([
+    { name: "good.csv", mimeType: "text/csv", buffer: Buffer.from(good) },
+    { name: "ranges.csv", mimeType: "text/csv", buffer: Buffer.from(bad) },
+  ]);
+  await expect(page.getByRole("heading", { name: "Files checked together" })).toBeVisible();
+  const goodRow = page.getByRole("row", { name: /good\.csv/ });
+  await expect(goodRow).toContainText("Ready to send");
+  const badRow = page.getByRole("row", { name: /ranges\.csv/ });
+  await expect(badRow).toContainText("Check before sending");
+  await expect(badRow).toContainText("end before they start");
+  await badRow.getByRole("button", { name: "Open" }).click();
+  await expect(page.getByRole("heading", { name: "Check before sending" })).toBeVisible();
+});
+
+test("notes a draft-looking file name", async ({ page }) => {
+  const nl = String.fromCharCode(10);
+  await page.goto("/");
+  await page.getByLabel(/I am allowed to analyze this file/).check();
+  await page.getByLabel("Upload CSV file").setInputFiles({
+    name: "report_final_copy.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from(["id,amount", "1,10", "2,20"].join(nl) + nl),
+  });
+  await expect(page.getByText("The file name looks like a draft").first()).toBeVisible();
+});

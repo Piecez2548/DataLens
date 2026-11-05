@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Cross-column checks: an end date earlier than its start date, and a total that is not quantity × unit price when most rows follow that rule.
+- Notes draft-looking file names (final, copy, test, (1)) and default sheet names in workbooks with several sheets.
+- Choose several files at once to see one status line per file; open any of them for the full check.
+
 - Warns when Excel would damage a CSV on opening: leading zeros dropped, numbers over 15 digits rounded, text like 1-2 turned into dates.
 - Offers to compare with the last check of a file with the same name pattern (totals only are kept in the browser, never cell values).
 - "Copy short summary" button for pasting into an email or chat.

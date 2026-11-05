@@ -12,6 +12,7 @@ export const issueKindLabels: Record<string, string> = {
   key_duplicate: "Repeated business keys",
   variant: "Spelling variants",
   totals: "Totals row",
+  range: "Dates or totals that do not add up",
 };
 
 export type IssueRow = {

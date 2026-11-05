@@ -886,3 +886,41 @@ def test_excel_risks_are_not_raised_for_ordinary_columns_or_xlsx():
     buffer = io.BytesIO()
     book.save(buffer)
     assert "Leading zeros" not in _issue_titles(analyze(buffer.getvalue(), "z.xlsx"))
+
+
+def test_end_before_start_is_reported():
+    data = b"id,start_date,end_date\n1,2024-01-01,2024-01-05\n2,2024-02-10,2024-02-01\n3,2024-03-01,2024-03-09\n"
+    titles = _issue_titles(analyze(data, "range.csv"))
+    assert "1 rows end before they start" in titles
+    ok = b"id,start_date,end_date\n1,2024-01-01,2024-01-05\n2,2024-02-01,2024-02-10\n"
+    assert "end before" not in _issue_titles(analyze(ok, "ok.csv"))
+
+
+def test_line_total_mismatch_is_reported_only_when_the_rule_mostly_holds():
+    rows = ["id,qty,unit_price,total"] + [f"{i},{i + 1},10,{(i + 1) * 10}" for i in range(1, 9)] + ["9,3,10,99"]
+    titles = _issue_titles(analyze("\n".join(rows).encode(), "lines.csv"))
+    assert "1 rows where total is not qty × unit_price" in titles
+    with_tax = ["id,qty,unit_price,total,tax"] + [f"{i},{i},10,{i * 10 + 1},1" for i in range(1, 6)]
+    assert "is not qty" not in _issue_titles(analyze("\n".join(with_tax).encode(), "tax.csv"))
+    unrelated = ["id,qty,unit_price,total"] + [f"{i},{i},10,{i * 7}" for i in range(1, 8)]
+    assert "is not qty" not in _issue_titles(analyze("\n".join(unrelated).encode(), "other.csv"))
+
+
+def test_draft_file_names_and_default_sheet_names_are_noted():
+    csv = b"id,amount\n1,10\n2,20\n"
+    noted = analyze(csv, "sales_final_v3 (1).csv")
+    assert any("looks like a draft" in i["title"] for i in noted["executive"]["issues"])
+    assert noted["executive"]["status"] == "Review needed"
+    assert not any("draft" in i["title"] for i in analyze(csv, "sales-2569-01.csv")["executive"]["issues"])
+    import io
+
+    import openpyxl
+
+    book = openpyxl.Workbook()
+    book.active.append(["id", "x"])
+    book.active.append([1, 2])
+    book.create_sheet("Summary")
+    buffer = io.BytesIO()
+    book.save(buffer)
+    result = analyze(buffer.getvalue(), "book.xlsx")
+    assert any("default name" in i["title"] for i in result["executive"]["issues"])
