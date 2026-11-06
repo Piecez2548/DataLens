@@ -116,6 +116,8 @@ export default function App() {
   }, [dark]);
   // Real phases of one analysis: reading the file, waiting for the service, applying its answer.
   const [uploadPct, setUploadPct] = useState(0);
+  // Rules and follow-ups set for a file come back when the person returns to it from the same set.
+  const perFile = useRef(new Map<File, { rules: Record<string, BusinessRule>; followUps: FollowUps }>());
   const [fileSet, setFileSet] = useState<BatchRow[]>([]);
   const [retry, setRetry] = useState<(() => void) | null>(null);
   const [stage, setStage] = useState<"idle" | "read" | "analyze" | "check" | "done">("idle");
@@ -353,6 +355,8 @@ export default function App() {
     if (fromLanding) setHolding(false);
     try {
       const fresh = file !== lastFile;
+      if (fresh && lastFile) perFile.current.set(lastFile, { rules: businessRules, followUps });
+      const kept = fresh ? perFile.current.get(file) : undefined;
       const remembered = fresh && !schema ? loadSettings(file.name) : null;
       const attempt = (extra: SavedSettings | null) =>
         requestAnalysis(
@@ -363,7 +367,11 @@ export default function App() {
             ...extra,
             sheet: schema?.sheet ?? extra?.sheet ?? (fresh ? undefined : sheetName || undefined),
             ...(fresh
-              ? { business_key: schema?.business_key ?? extra?.business_key ?? [], group_by: extra?.group_by ?? null }
+              ? {
+                  business_key: schema?.business_key ?? extra?.business_key ?? [],
+                  group_by: extra?.group_by ?? null,
+                  ...(schema?.business_rules ? {} : { business_rules: kept?.rules ?? {} }),
+                }
               : {}),
           },
           attested,
@@ -403,8 +411,8 @@ export default function App() {
         setSheetOverview([]);
       }
       if (fresh) {
-        setBusinessRules({});
-        setFollowUps({});
+        setBusinessRules(kept?.rules ?? {});
+        setFollowUps(kept?.followUps ?? {});
       }
       setSnapshotInfo("");
       const nextSettings: SavedSettings = {};
@@ -450,7 +458,15 @@ export default function App() {
       setPage(0);
       if (fresh) setTab("Overview");
       setStage("done");
-      setFileSet((current) => (current.some((row) => row.file === file) ? current : []));
+      setFileSet((current) => {
+        if (!current.some((row) => row.file === file)) return [];
+        const shown = getLanguage() === "th" ? result.executive.thai : result.executive;
+        return current.map((row) =>
+          row.file === file
+            ? { file, status: result.executive.status, rows: result.rows, issues: result.executive.issues.length, top: shown.issues[0]?.title }
+            : row,
+        );
+      });
       if (fromLanding && !batch) setHolding(true);
     } catch (e) {
       setStage("idle");

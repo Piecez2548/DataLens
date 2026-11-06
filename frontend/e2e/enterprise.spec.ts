@@ -765,3 +765,33 @@ test("walks through a set of files with next-file, overview and a combined CSV",
   await switcher.getByRole("button", { name: "All files overview" }).click();
   await expect(page.getByRole("heading", { name: "Checked 2 files" })).toBeVisible();
 });
+
+test("rules set for one file are still there after switching away and back", async ({ page }) => {
+  await page.addInitScript(() => window.localStorage.setItem("e2e.keep-hold", "1"));
+  await page.goto("/");
+  await page.getByLabel(/I am allowed to analyze this file/).check();
+  await page.getByLabel("Upload CSV file").setInputFiles([
+    path.resolve("../samples/demo.csv"),
+    path.resolve("../frontend/public/samples/sales-th.csv"),
+  ]);
+  await page.getByRole("listitem").filter({ hasText: "demo.csv" }).getByRole("button", { name: "See details" }).click();
+  await page.getByText("Business rules", { exact: true }).click();
+  await page.locator(".rule-row").filter({ hasText: "revenue" }).getByLabel("Minimum").fill("0");
+  await page.getByRole("button", { name: "Check these rules" }).click();
+  await expect(page.getByText("All business rules passed.")).toBeVisible();
+  const switcher = page.getByRole("navigation", { name: "Files checked together" });
+  await switcher.getByRole("button", { name: /sales-th\.csv/ }).click();
+  await expect(switcher.getByRole("button", { name: /sales-th\.csv/ })).toHaveAttribute("aria-current", "true");
+  await switcher.getByRole("button", { name: /demo\.csv/ }).click();
+  await expect(switcher.getByRole("button", { name: /demo\.csv/ })).toHaveAttribute("aria-current", "true");
+  // The rules panel stays open across the switch; the rule result comes from the remembered rules.
+  await expect(page.getByText("All business rules passed.")).toBeVisible();
+});
+
+test("says how large an oversized file is and what to do", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel(/I am allowed to analyze this file/).check();
+  await page.getByLabel("Upload CSV file").setInputFiles({ name: "huge.csv", mimeType: "text/csv", buffer: Buffer.alloc(41 * 1024 * 1024, "a") });
+  await expect(page.getByRole("alert")).toContainText(/too large \(41\.0 MB\)\. The limit is 40 MB/);
+  await expect(page.getByRole("button", { name: "Try again" })).toHaveCount(0);
+});
