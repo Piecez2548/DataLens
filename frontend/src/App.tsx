@@ -30,10 +30,12 @@ import {
 import { loadLastResult, saveLastResult, type LastResult } from "./lastResult";
 import BatchResults, { type BatchRow } from "./BatchResults";
 import SheetOverview from "./SheetOverview";
+import ColumnTable from "./ColumnTable";
+import LookFirst from "./LookFirst";
 import SendCheck from "./SendCheck";
 const downloadProblemRowsXlsx = (data: Analysis) => import("./issueExport").then((module) => module.downloadProblemRowsXlsx(data));
 import { allowedFile, checkSentSize, MAX_TEXT_MB, MAX_UPLOAD_MB, prepareUpload } from "./upload";
-import { downloadExecutiveReport, printExecutiveReport, summaryText } from "./report";
+import { downloadExecutiveReport, downloadQualityCsv, printExecutiveReport, summaryText } from "./report";
 const RulesPanel = lazy(() => import("./Rules").then((module) => ({ default: module.RulesPanel })));
 import ChartBoundary from "./ChartBoundary";
 const Compare = lazy(() => import("./Compare"));
@@ -92,13 +94,35 @@ export default function App() {
     };
   }, [busy]);
   const [error, setError] = useState("");
-  const [dark, setDark] = useState(false);
+  const [dark, setDark] = useState(() => {
+    try {
+      const saved = window.localStorage.getItem("datalens.theme");
+      if (saved === "dark" || saved === "light") return saved === "dark";
+    } catch {
+      /* fall through to the system preference */
+    }
+    return window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
+  });
+  useEffect(() => {
+    document.documentElement.style.colorScheme = dark ? "dark" : "light";
+    document.documentElement.style.backgroundColor = dark ? "#0f0f1a" : "#f5f5fa";
+    try {
+      window.localStorage.setItem("datalens.theme", dark ? "dark" : "light");
+    } catch {
+      /* the choice then lasts for this visit only */
+    }
+  }, [dark]);
+  // Real phases of one analysis: reading the file, waiting for the service, applying its answer.
+  const [retry, setRetry] = useState<(() => void) | null>(null);
+  const [stage, setStage] = useState<"idle" | "read" | "analyze" | "check" | "done">("idle");
+  const [dragging, setDragging] = useState(false);
+  const [nudge, setNudge] = useState(false);
   const [lang, setLang] = useState<Lang>(() => {
     try {
       const saved = window.localStorage.getItem("datalens.lang");
-      return saved === "th" || saved === "en" ? saved : "en";
+      return saved === "th" || saved === "en" ? saved : "th";
     } catch {
-      return "en";
+      return "th";
     }
   });
   // Set before children render so every t() call in this pass uses the chosen language.
@@ -146,6 +170,9 @@ export default function App() {
   const compareInput = useRef<HTMLInputElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const uploadTrigger = useRef<HTMLButtonElement>(null);
+  const authBox = useRef<HTMLInputElement>(null);
+  // After a first analysis the progress card stays until the person opens the results.
+  const [holding, setHolding] = useState(false);
   async function requestAnalysis(
     file: File,
     headerMode: "auto" | "present" | "absent",
@@ -153,8 +180,10 @@ export default function App() {
     attested: boolean = authorized,
   ): Promise<Analysis> {
     const body = new FormData();
+    setStage("read");
     const toSend = await prepareUpload(file);
     checkSentSize(toSend);
+    setStage("analyze");
     body.append("file", toSend);
     body.append(
       "schema",
@@ -199,6 +228,7 @@ export default function App() {
         typeof e.detail === "string" ? e.detail : "Could not analyze this file.",
       );
     }
+    setStage("check");
     return response.json();
   }
   const validFile = allowedFile;
@@ -244,8 +274,20 @@ export default function App() {
   }
   async function compareWith(file: File) {
     if (busy || !data) return;
+    if (file.size === 0) {
+      setRetry(null);
+      setError("This file is empty. Choose a file with a header row and at least one row of data.");
+      return;
+    }
+    if (!/\.(csv|xlsx|json|jsonl|ndjson)$/i.test(file.name)) {
+      setRetry(null);
+      setError("This file type is not supported. Save it as CSV, JSON or Excel (.xlsx) and try again.");
+      return;
+    }
     if (!validFile(file)) {
-      setError(`Choose a CSV, XLSX or JSON file no larger than ${MAX_TEXT_MB} MB.`);
+      const limit = /\.xlsx$/i.test(file.name) ? MAX_UPLOAD_MB : MAX_TEXT_MB;
+      setRetry(null);
+      setError(`This file is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). The limit is ${limit} MB. Split the file or remove columns you do not need.`);
       return;
     }
     setBusy(true);
@@ -267,6 +309,13 @@ export default function App() {
       if (compareInput.current) compareInput.current.value = "";
     }
   }
+  // Dropping a file before ticking the privacy box must not fail silently: pull the eye to the box.
+  function askConfirmation() {
+    setNudge(true);
+    authBox.current?.focus();
+    authBox.current?.scrollIntoView?.({ block: "center", behavior: "smooth" });
+    window.setTimeout(() => setNudge(false), 2400);
+  }
   async function upload(
     file: File,
     headerMode: "auto" | "present" | "absent" = "auto",
@@ -275,15 +324,31 @@ export default function App() {
   ) {
     if (busy) return;
     if (!attested) {
-      setError("Confirm that you are allowed to upload this file before analysis.");
+      askConfirmation();
+      return;
+    }
+    if (file.size === 0) {
+      setRetry(null);
+      setError("This file is empty. Choose a file with a header row and at least one row of data.");
+      return;
+    }
+    if (!/\.(csv|xlsx|json|jsonl|ndjson)$/i.test(file.name)) {
+      setRetry(null);
+      setError("This file type is not supported. Save it as CSV, JSON or Excel (.xlsx) and try again.");
       return;
     }
     if (!validFile(file)) {
-      setError(`Choose a CSV, XLSX or JSON file no larger than ${MAX_TEXT_MB} MB.`);
+      const limit = /\.xlsx$/i.test(file.name) ? MAX_UPLOAD_MB : MAX_TEXT_MB;
+      setRetry(null);
+      setError(`This file is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). The limit is ${limit} MB. Split the file or remove columns you do not need.`);
       return;
     }
     setBusy(true);
     setError("");
+    setRetry(null);
+    const fromLanding = !data;
+    setStage("read");
+    if (fromLanding) setHolding(false);
     try {
       const fresh = file !== lastFile;
       const remembered = fresh && !schema ? loadSettings(file.name) : null;
@@ -382,7 +447,11 @@ export default function App() {
       );
       setPage(0);
       if (fresh) setTab("Overview");
+      setStage("done");
+      if (fromLanding) setHolding(true);
     } catch (e) {
+      setStage("idle");
+      setRetry(() => () => void upload(file, headerMode, schema, attested));
       setError(
         e instanceof TypeError
           ? "Cannot reach the analysis service. Please try again in a moment."
@@ -437,7 +506,7 @@ export default function App() {
   async function checkSeveral(files: File[]) {
     if (busy) return;
     if (!authorized) {
-      setError("Confirm that you are allowed to upload this file before analysis.");
+      askConfirmation();
       return;
     }
     const chosen = files.slice(0, 10);
@@ -530,6 +599,8 @@ export default function App() {
   }
   function clearDataset() {
     setData(null);
+    setHolding(false);
+    setStage("idle");
     setLastTime(null);
     setCopied(false);
     setOther(null);
@@ -579,8 +650,9 @@ export default function App() {
       after: data.executive.issue_count.toLocaleString(),
     };
   })();
+  const landing = !data || holding;
   return (
-    <div className={dark ? "app dark" : "app"}>
+    <div className={`${dark ? "app dark" : "app"}${landing ? " landing-mode" : ""}`}>
       <aside>
         <a className="brand" href="#">
           <Aperture size={30} />
@@ -632,7 +704,7 @@ export default function App() {
           </div>
         </header>
         <div className="content">
-          <div className="page-heading">
+          {!landing && <div className="page-heading">
             <div>
               <div className="eyebrow">{t("DATASET EXPLORER")}</div>
               <h1>{t("Good insights start")}<br className="mobile-break" />{t("with good data.")}</h1>
@@ -649,7 +721,7 @@ export default function App() {
                 {t("Upload file")}
               </button>
             )}
-          </div>
+          </div>}
           <input
             ref={input}
             type="file"
@@ -672,8 +744,11 @@ export default function App() {
           />
           {error && (
             <div role="alert" className="error">
-              {tError(error)}
-              <button aria-label={t("Dismiss error")} onClick={() => setError("")}>
+              <span>{tError(error)}</span>
+              {retry && (
+                <button className="retry" disabled={busy} onClick={() => retry()}>{t("Try again")}</button>
+              )}
+              <button aria-label={t("Dismiss error")} onClick={() => { setError(""); setRetry(null); }}>
                 <X size={18} />
               </button>
             </div>
@@ -690,72 +765,141 @@ export default function App() {
                 ? tf("{name} analyzed, {rows} rows", { name: data.filename, rows: data.rows })
                 : ""}
           </div>
-          {!data ? (
-            <section
-              className="upload-area"
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => {
-                e.preventDefault();
-                routeFiles(Array.from(e.dataTransfer.files));
-              }}
-            >
-              {batch && (
-                <BatchResults
-                  rows={batch}
-                  busy={busy}
-                  onOpen={(file) => {
-                    setBatch(null);
-                    void upload(file);
-                  }}
-                  onClose={() => setBatch(null)}
-                />
-              )}
-              <div className="upload-icon">
-                <FileSpreadsheet size={26} />
+{landing ? (
+            <div className="landing">
+              <div className="hero">
+                <div className="eyebrow hero-eyebrow">{t("DATASET EXPLORER")}</div>
+                <h1>{t("Good insights start")}<br />{t("with good data.")}</h1>
+                <p className="hero-lead">{t("Understand your schema, spot gaps, and explore what matters.")}</p>
+                <ol className="hero-points">
+                  {([
+                    ["Structure", "Column types, values and your schema in one view."],
+                    ["Quality", "Gaps and odd values shown from the very first screen."],
+                    ["Distribution", "See how each column is spread before you send the file."],
+                  ] as const).map(([title, text], index) => (
+                    <li key={title}>
+                      <span className="hero-num">{`0${index + 1}`}</span>
+                      <div>
+                        <strong>{t(title)}</strong>
+                        <p>{t(text)}</p>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
               </div>
-              <h2>{t("Your next discovery starts here")}</h2>
-              <p>{t("Drop a CSV, Excel (.xlsx) or JSON file here to explore its quality and structure.")}</p>
-              <label className="authorization upload-authorization">
-                <input
-                  type="checkbox"
-                  checked={authorized}
-                  onChange={(event) => setAuthorized(event.target.checked)}
-                />{t("I am allowed to analyze this file, and it contains no personal or sensitive data.")}</label>
-              <p className="privacy-note">{t("Current release: use synthetic or confirmed non-personal data only. CSV bytes are sent to the analysis service and may be handled transiently by the hosting framework. DataLens does not intentionally persist the file.")}</p>
-              <div className="upload-actions">
-                <button
-                  className="primary"
-                  disabled={busy || !authorized}
-                  onClick={() => input.current?.click()}
-                >
-                  {busy ? t("Analyzing…") : t("Choose a CSV file")}
-                  <ArrowUpRight size={17} />
-                </button>
-              </div>
-              {!authorized && <small className="hint">{t("Tick the box above to enable the buttons.")}</small>}
-              <div className="samples" role="group" aria-label={t("Try a sample")}>
-                <strong>{t("Try a sample")}</strong>
-                <div>
-                  <button disabled={busy} onClick={() => void trySample("sales-th.csv", "text/csv")}>
-                    {t("Thai sales (CSV)")}
-                  </button>
-                  <button
-                    disabled={busy}
-                    onClick={() =>
-                      void trySample("orders.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-                    }
-                  >
-                    {t("Orders workbook (Excel, 2 sheets)")}
-                  </button>
-                  <button disabled={busy} onClick={() => void trySample("orders.json", "application/json")}>
-                    {t("Orders records (JSON)")}
-                  </button>
+              <section
+                className={`upload-area${dragging ? " dragging" : ""}`}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  if (!busy) setDragging(true);
+                }}
+                onDragLeave={(e) => {
+                  if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDragging(false);
+                  if (!busy) routeFiles(Array.from(e.dataTransfer.files));
+                }}
+              >
+                {batch && (
+                  <BatchResults
+                    rows={batch}
+                    busy={busy}
+                    onOpen={(file) => {
+                      setBatch(null);
+                      void upload(file);
+                    }}
+                    onClose={() => setBatch(null)}
+                  />
+                )}
+                {dragging && <div className="drop-hint" aria-hidden="true">{t("Drop the file to start analysis")}</div>}
+                <div className="upload-icon">
+                  <FileSpreadsheet size={26} />
                 </div>
-              </div>
-              <small>
-                {tf("CSV or JSON up to {text} MB, Excel up to {mb} MB · 100,000 rows · 100 columns", { text: MAX_TEXT_MB, mb: MAX_UPLOAD_MB })}
-              </small>
-            </section>
+                {holding || (busy && stage !== "idle") ? (
+                  <div className="progress-card" role="status">
+                    <h2>{holding ? t("Analysis complete") : t("Analyzing your file")}</h2>
+                    <ol className="steps">
+                      {([
+                        ["read", "Reading file"],
+                        ["analyze", "Analyzing structure"],
+                        ["check", "Checking quality"],
+                      ] as const).map(([key, label], index) => {
+                        const order = ["read", "analyze", "check", "done"];
+                        const at = order.indexOf(stage);
+                        const state = at > index ? "done" : at === index ? "active" : "todo";
+                        return (
+                          <li key={key} className={`step ${state}`} aria-current={state === "active" ? "step" : undefined}>
+                            <span className="step-mark" aria-hidden="true">{state === "done" ? <Check size={14} /> : index + 1}</span>
+                            {t(label)}
+                          </li>
+                        );
+                      })}
+                    </ol>
+                    {busy && slow && <small>{t("This can take up to 30 seconds the first time.")}</small>}
+                    {holding && data && (
+                      <div className="upload-actions">
+                        <button className="primary" onClick={() => setHolding(false)}>
+                          {t("Open analysis results")}
+                          <ArrowUpRight size={17} />
+                        </button>
+                        <button onClick={clearDataset}>{t("Analyze another file")}</button>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    <h2>{t("Your next discovery starts here")}</h2>
+                    <p>{t("Drop a CSV, Excel (.xlsx) or JSON file here to explore its quality and structure.")}</p>
+                    <label className={`authorization upload-authorization${nudge ? " nudge" : ""}`}>
+                      <input
+                        ref={authBox}
+                        type="checkbox"
+                        checked={authorized}
+                        onChange={(event) => setAuthorized(event.target.checked)}
+                      />{t("I am allowed to analyze this file, and it contains no personal or sensitive data.")}</label>
+                    <p className="privacy-note">{t("Current release: use synthetic or confirmed non-personal data only. CSV bytes are sent to the analysis service and may be handled transiently by the hosting framework. DataLens does not intentionally persist the file.")}</p>
+                    <div className="upload-actions">
+                      <button
+                        className="primary"
+                        disabled={busy || !authorized}
+                        onClick={() => input.current?.click()}
+                      >
+                        {busy ? t("Analyzing…") : t("Choose a CSV file")}
+                        <ArrowUpRight size={17} />
+                      </button>
+                    </div>
+                    {!authorized && <small className={`hint${nudge ? " nudge-text" : ""}`}>{t("Tick the box above to enable the buttons.")}</small>}
+                    <div className="samples" role="group" aria-label={t("Try a sample")}>
+                      <strong>{t("Try a sample")}</strong>
+                      <div>
+                        <button disabled={busy} onClick={() => void trySample("sales-th.csv", "text/csv")}>
+                          {t("Thai sales (CSV)")}
+                        </button>
+                        <button
+                          disabled={busy}
+                          onClick={() =>
+                            void trySample("orders.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                          }
+                        >
+                          {t("Orders workbook (Excel, 2 sheets)")}
+                        </button>
+                        <button disabled={busy} onClick={() => void trySample("orders.json", "application/json")}>
+                          {t("Orders records (JSON)")}
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </section>
+              <dl className="limits">
+                <div><dt>{MAX_TEXT_MB} MB</dt><dd>{t("CSV and JSON")}</dd></div>
+                <div><dt>{MAX_UPLOAD_MB} MB</dt><dd>{t("Excel (.xlsx)")}</dd></div>
+                <div><dt>100,000</dt><dd>{t("Rows at most")}</dd></div>
+                <div><dt>100</dt><dd>{t("Columns at most")}</dd></div>
+              </dl>
+            </div>
           ) : (
             <>
               <div className="file-strip">
@@ -792,6 +936,9 @@ export default function App() {
                     }}
                   >
                     <Printer size={15} /> {t("Print / Save as PDF")}
+                  </button>
+                  <button className="report-button" onClick={() => downloadQualityCsv(data)}>
+                    <Upload size={15} /> {t("Export quality report (CSV)")}
                   </button>
                   <button
                     className="report-button"
@@ -836,6 +983,7 @@ export default function App() {
                   })}
                 </small>
               </div>
+              <LookFirst columns={data.columns} rows={data.rows} onPick={(name) => { setSelected(name); setTab("Explore"); }} />
               <nav className="tabs" aria-label={t("Dataset views")}>
                 {(other ? [...baseTabs, "Compare" as const] : [...baseTabs]).map((name) => (
                   <button
@@ -993,23 +1141,39 @@ export default function App() {
                         <strong>{tf("This workbook has {count} sheets", { count: data.provenance.sheets.length })}</strong>
                         <p>{t("Each sheet is analyzed on its own. Choose the sheet to analyze.")}</p>
                       </div>
-                      <select
-                        aria-label={t("Worksheet")}
-                        value={data.provenance.sheet ?? ""}
-                        disabled={busy || !lastFile}
-                        onChange={(event) => {
-                          if (!lastFile) return;
+                      {(() => {
+                        const pick = (name: string) => {
+                          if (!lastFile || name === data.provenance.sheet) return;
                           setBusinessRules({});
-                          void upload(lastFile, "auto", {
-                            sheet: event.target.value,
-                            business_rules: {},
-                          });
-                        }}
-                      >
-                        {data.provenance.sheets.map((name) => (
-                          <option key={name}>{name}</option>
-                        ))}
-                      </select>
+                          void upload(lastFile, "auto", { sheet: name, business_rules: {} });
+                        };
+                        return data.provenance.sheets.length <= 8 ? (
+                          <div className="sheet-tabs" role="group" aria-label={t("Worksheet")}>
+                            {data.provenance.sheets.map((name) => (
+                              <button
+                                key={name}
+                                className={name === data.provenance.sheet ? "chip on" : "chip"}
+                                aria-pressed={name === data.provenance.sheet}
+                                disabled={busy || !lastFile}
+                                onClick={() => pick(name)}
+                              >
+                                {name}
+                              </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <select
+                            aria-label={t("Worksheet")}
+                            value={data.provenance.sheet ?? ""}
+                            disabled={busy || !lastFile}
+                            onChange={(event) => pick(event.target.value)}
+                          >
+                            {data.provenance.sheets.map((name) => (
+                              <option key={name}>{name}</option>
+                            ))}
+                          </select>
+                        );
+                      })()}
                       {!sheetOverview.length && (
                         <button disabled={busy || !lastFile} onClick={() => void analyzeAllSheets()}>
                           {t("Analyze all sheets")}
@@ -1306,46 +1470,7 @@ export default function App() {
                   <section className="panel">
                     <h2>{t("Column health")}</h2>
                     <p className="muted">{t("A type is inferred only when it has a clear majority. Empty cells are excluded from type checks.")}</p>
-                    <div className="table-scroll">
-                      <table>
-                        <thead>
-                          <tr>
-                            {[
-                              "Column",
-                              "Inferred type",
-                              "Missing",
-                              "Type mismatches",
-                              "Invalid",
-                              "Outliers",
-                              "Distinct",
-                            ].map((h) => (
-                              <th key={h}>{t(h)}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {data.columns.map((c) => (
-                            <tr key={c.name}>
-                              <td>{c.name}</td>
-                              <td>
-                                <span className="badge">{t(c.type)}</span>
-                                {c.format && <span className="badge">{t(c.format)}</span>}
-                                {c.pattern && (
-                                  <span className="badge">
-                                    {t(c.pattern === "thai_national_id" ? "Thai ID (personal data)" : "Thai phone (personal data)")}
-                                  </span>
-                                )}
-                              </td>
-                              <td>{c.missing}</td>
-                              <td>{c.mismatches}</td>
-                              <td>{c.invalid}</td>
-                              <td>{c.outliers}</td>
-                              <td>{c.unique}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                    <ColumnTable columns={data.columns} selected={selected} onSelect={(name) => { setSelected(name); setTab("Explore"); }} />
                   </section>
                 </>
               )}

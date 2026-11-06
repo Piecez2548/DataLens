@@ -158,3 +158,34 @@ export function summaryText(data: Analysis): string {
   else lines.push(t("No problems found by DataLens."));
   return lines.join("\n");
 }
+
+const csvCell = (value: string | number) => {
+  let text = String(value);
+  // A cell starting with = + - @ can run as a formula when the file is opened in Excel.
+  if (/^[=+\-@\t\r]/.test(text) && typeof value === "string") text = `'${text}`;
+  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+};
+
+/** One row per column with the numbers behind the quality report, for people who work in a spreadsheet. */
+export function downloadQualityCsv(data: Analysis) {
+  const header = ["Column", "Inferred type", "Missing", "Missing %", "Type mismatches", "Invalid", "Outliers", "Distinct"].map((h) => t(h));
+  const rows = data.columns.map((c) => [
+    c.name,
+    c.type,
+    c.missing,
+    data.rows ? Math.round((c.missing / data.rows) * 10000) / 100 : 0,
+    c.mismatches,
+    c.invalid,
+    c.outliers,
+    c.unique,
+  ]);
+  const text = [header, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n");
+  const url = URL.createObjectURL(new Blob(["\ufeff" + text], { type: "text/csv;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${buildReport(data).safeName}-quality-report.csv`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}

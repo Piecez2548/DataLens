@@ -1,6 +1,19 @@
 import { expect, test } from "@playwright/test";
 import path from "node:path";
 
+// The app now defaults to Thai and follows the system theme; these tests read English and the light theme.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("datalens.lang", "en");
+    window.localStorage.setItem("datalens.theme", "light");
+    // Most tests are about the results, so skip the "Open analysis results" step; one test below covers it.
+    new MutationObserver(() => {
+      if (window.localStorage.getItem("e2e.keep-hold")) return;
+      document.querySelector<HTMLButtonElement>(".progress-card .primary")?.click();
+    }).observe(document, { childList: true, subtree: true });
+  });
+});
+
 test("analyzes a real CSV and checks business rules", async ({
   page,
 }) => {
@@ -145,7 +158,7 @@ test("reads every sheet of a workbook and locates issues for export", async ({ p
     .getByLabel("Upload CSV file")
     .setInputFiles(path.resolve("e2e/fixtures/two-sheets.xlsx"));
   await expect(page.getByText("This workbook has 2 sheets")).toBeVisible();
-  await page.getByLabel("Worksheet").selectOption("Orders");
+  await page.getByRole("group", { name: "Worksheet" }).getByRole("button", { name: "Orders", exact: true }).click();
   await expect(page.getByText("4 rows · 2 columns")).toBeVisible();
 
   await page.getByRole("navigation", { name: "Dataset views" }).getByRole("button", { name: "Issues" }).click();
@@ -364,7 +377,7 @@ test("shows every sheet of a workbook side by side", async ({ page }) => {
   await expect(table.getByRole("row")).toHaveCount(3);
   await expect(table.getByRole("cell", { name: "Orders", exact: true })).toBeVisible();
 
-  await page.getByLabel("Worksheet", { exact: true }).first().selectOption("Orders");
+  await page.getByRole("group", { name: "Worksheet" }).getByRole("button", { name: "Orders", exact: true }).click();
   await expect(page.getByText("4 rows · 2 columns")).toBeVisible();
   await expect(table.getByRole("row")).toHaveCount(3);
 });
@@ -659,4 +672,56 @@ test("shows how many problems were fixed since the last check of the same file",
   await page.getByLabel(/I am allowed to analyze this file/).check();
   await page.getByLabel("Upload CSV file").setInputFiles({ name: "fix.csv", mimeType: "text/csv", buffer: Buffer.from(after) });
   await expect(page.getByText(/Since then: 1 problem\(s\) fixed, 1 left, 0 new/)).toBeVisible();
+});
+
+test("shows the three analysis steps, then look-first and a filterable structure table", async ({ page }) => {
+  await page.addInitScript(() => window.localStorage.setItem("e2e.keep-hold", "1"));
+  await page.goto("/");
+  // Dropping a file before ticking the privacy box highlights the box instead of failing silently.
+  await page.getByLabel("Upload CSV file").setInputFiles(path.resolve("../samples/demo.csv"));
+  await expect(page.getByLabel(/I am allowed to analyze this file/)).toBeFocused();
+  await page.getByLabel(/I am allowed to analyze this file/).check();
+  await page.getByLabel("Upload CSV file").setInputFiles(path.resolve("../samples/demo.csv"));
+  await expect(page.getByText("Checking quality")).toBeVisible();
+  await page.getByRole("button", { name: "Open analysis results" }).click();
+  await expect(page.getByRole("region", { name: "Look at first" })).toBeVisible();
+  await page.getByRole("button", { name: "Data quality" }).click();
+  const count = page.getByRole("status").filter({ hasText: /^Showing \d+ of \d+ columns$/ });
+  await expect(count).toBeVisible();
+  await page.getByRole("button", { name: /^Has gaps/ }).click();
+  await page.getByLabel("Search column name").fill("zzzz");
+  await expect(page.getByText("No columns match these filters.")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByText("No columns match these filters.")).toBeHidden();
+  await page.getByRole("button", { name: /^All/ }).focus();
+  await page.keyboard.press("/");
+  await expect(page.getByLabel("Search column name")).toBeFocused();
+});
+
+test("explains an empty file, an unsupported type and a failed analysis with a retry", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel(/I am allowed to analyze this file/).check();
+  const input = page.getByLabel("Upload CSV file");
+  await input.setInputFiles({ name: "empty.csv", mimeType: "text/csv", buffer: Buffer.alloc(0) });
+  await expect(page.getByRole("alert")).toContainText("This file is empty");
+  await input.setInputFiles({ name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from("hi") });
+  await expect(page.getByRole("alert")).toContainText("not supported");
+  await page.route("**/api/analyze*", (route) => route.abort());
+  await input.setInputFiles(path.resolve("../samples/demo.csv"));
+  await expect(page.getByRole("alert")).toContainText("Cannot reach the analysis service");
+  await page.unroute("**/api/analyze*");
+  await page.getByRole("button", { name: "Try again" }).click();
+  await expect(page.getByRole("alert")).toBeHidden();
+  await expect(page.getByRole("region", { name: "Look at first" })).toBeVisible();
+});
+
+test("exports the quality report as CSV", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel(/I am allowed to analyze this file/).check();
+  await page.getByLabel("Upload CSV file").setInputFiles(path.resolve("../samples/demo.csv"));
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: "Export quality report (CSV)" }).click(),
+  ]);
+  expect(download.suggestedFilename()).toMatch(/-quality-report\.csv$/);
 });
