@@ -506,6 +506,10 @@ export default function App() {
       if (input.current) input.current.value = "";
     }
   }
+  const hasBatch = batch !== null;
+  useEffect(() => {
+    if (hasBatch) window.scrollTo?.({ top: 0 });
+  }, [hasBatch]);
   async function checkSeveral(files: File[]) {
     if (busy) return;
     if (!authorized) {
@@ -769,7 +773,18 @@ export default function App() {
                 ? tf("{name} analyzed, {rows} rows", { name: data.filename, rows: data.rows })
                 : ""}
           </div>
-{landing ? (
+{landing && batch ? (
+            <BatchResults
+              rows={batch}
+              busy={busy}
+              onOpen={(file) => {
+                setFileSet(batch.filter((row) => !row.error));
+                setBatch(null);
+                void upload(file);
+              }}
+              onClose={() => setBatch(null)}
+            />
+          ) : landing ? (
             <div className="landing">
               <div className="hero">
                 <div className="eyebrow hero-eyebrow">{t("DATASET EXPLORER")}</div>
@@ -806,18 +821,6 @@ export default function App() {
                   if (!busy) routeFiles(Array.from(e.dataTransfer.files));
                 }}
               >
-                {batch && (
-                  <BatchResults
-                    rows={batch}
-                    busy={busy}
-                    onOpen={(file) => {
-                      setFileSet(batch.filter((row) => !row.error));
-                      setBatch(null);
-                      void upload(file);
-                    }}
-                    onClose={() => setBatch(null)}
-                  />
-                )}
                 {dragging && <div className="drop-hint" aria-hidden="true">{t("Drop the file to start analysis")}</div>}
                 <div className="upload-icon">
                   <FileSpreadsheet size={26} />
@@ -880,6 +883,7 @@ export default function App() {
                         <ArrowUpRight size={17} />
                       </button>
                     </div>
+                    <small className="multi-hint">{t("You can choose or drop up to 10 files at once.")}</small>
                     {!authorized && <small className={`hint${nudge ? " nudge-text" : ""}`}>{t("Tick the box above to enable the buttons.")}</small>}
                     <div className="samples" role="group" aria-label={t("Try a sample")}>
                       <strong>{t("Try a sample")}</strong>

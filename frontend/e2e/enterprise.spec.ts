@@ -615,13 +615,13 @@ test("checks several files at once and opens one of them", async ({ page }) => {
     { name: "good.csv", mimeType: "text/csv", buffer: Buffer.from(good) },
     { name: "ranges.csv", mimeType: "text/csv", buffer: Buffer.from(bad) },
   ]);
-  await expect(page.getByRole("heading", { name: "Files checked together" })).toBeVisible();
-  const goodRow = page.getByRole("row", { name: /good\.csv/ });
+  await expect(page.getByRole("heading", { name: "Checked 2 files" })).toBeVisible();
+  const goodRow = page.getByRole("listitem").filter({ hasText: "good.csv" });
   await expect(goodRow).toContainText("Ready to send");
-  const badRow = page.getByRole("row", { name: /ranges\.csv/ });
+  const badRow = page.getByRole("listitem").filter({ hasText: "ranges.csv" });
   await expect(badRow).toContainText("Check before sending");
   await expect(badRow).toContainText("end before they start");
-  await badRow.getByRole("button", { name: "Open" }).click();
+  await badRow.getByRole("button", { name: "See details" }).click();
   await expect(page.getByRole("heading", { name: "Check before sending" })).toBeVisible();
 });
 
@@ -734,8 +734,8 @@ test("files checked together stay switchable in the workspace", async ({ page })
     path.resolve("../samples/demo.csv"),
     path.resolve("../frontend/public/samples/sales-th.csv"),
   ]);
-  await expect(page.getByText("Files checked together").first()).toBeVisible();
-  await page.getByRole("button", { name: "Open" }).first().click();
+  await expect(page.getByRole("heading", { name: "Checked 2 files" })).toBeVisible();
+  await page.getByRole("button", { name: "See details" }).first().click();
   const switcher = page.getByRole("navigation", { name: "Files checked together" });
   await expect(switcher).toBeVisible();
   await switcher.getByRole("button", { name: /sales-th\.csv/ }).click();
