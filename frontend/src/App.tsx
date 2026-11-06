@@ -99,9 +99,10 @@ export default function App() {
       const saved = window.localStorage.getItem("datalens.theme");
       if (saved === "dark" || saved === "light") return saved === "dark";
     } catch {
-      /* fall through to the system preference */
+      /* fall through to the default */
     }
-    return window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
+    // First visit starts in the light theme; the toggle remembers a later choice.
+    return false;
   });
   useEffect(() => {
     document.documentElement.style.colorScheme = dark ? "dark" : "light";

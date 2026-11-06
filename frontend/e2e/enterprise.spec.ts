@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import path from "node:path";
 
-// The app now defaults to Thai and follows the system theme; these tests read English and the light theme.
+// The app now defaults to Thai and the light theme; these tests read English and the light theme.
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     window.localStorage.setItem("datalens.lang", "en");
