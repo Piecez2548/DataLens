@@ -28,3 +28,22 @@ export function checkSentSize(file: File) {
     throw new Error(`This file is still larger than ${MAX_UPLOAD_MB} MB after compression. Remove columns or split it.`);
   }
 }
+
+/** POST with real upload progress (fetch cannot report it). Resolves to a Response so callers stay unchanged. */
+export function postWithProgress(url: string, body: FormData, onProgress: (percent: number) => void): Promise<Response> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", url);
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress(Math.min(100, Math.round((event.loaded / event.total) * 100)));
+    };
+    xhr.onload = () => {
+      onProgress(100);
+      if (xhr.status < 200 || xhr.status > 599) reject(new TypeError("Network error"));
+      else resolve(new Response(xhr.responseText, { status: xhr.status }));
+    };
+    xhr.onerror = () => reject(new TypeError("Network error"));
+    xhr.onabort = () => reject(new TypeError("Network error"));
+    xhr.send(body);
+  });
+}

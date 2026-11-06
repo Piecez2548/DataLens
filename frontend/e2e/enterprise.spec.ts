@@ -725,3 +725,20 @@ test("exports the quality report as CSV", async ({ page }) => {
   ]);
   expect(download.suggestedFilename()).toMatch(/-quality-report\.csv$/);
 });
+
+test("files checked together stay switchable in the workspace", async ({ page }) => {
+  await page.addInitScript(() => window.localStorage.setItem("e2e.keep-hold", "1"));
+  await page.goto("/");
+  await page.getByLabel(/I am allowed to analyze this file/).check();
+  await page.getByLabel("Upload CSV file").setInputFiles([
+    path.resolve("../samples/demo.csv"),
+    path.resolve("../frontend/public/samples/sales-th.csv"),
+  ]);
+  await expect(page.getByText("Files checked together").first()).toBeVisible();
+  await page.getByRole("button", { name: "Open" }).first().click();
+  const switcher = page.getByRole("navigation", { name: "Files checked together" });
+  await expect(switcher).toBeVisible();
+  await switcher.getByRole("button", { name: /sales-th\.csv/ }).click();
+  await expect(page.getByText("sales-th.csv").first()).toBeVisible();
+  await expect(switcher.getByRole("button", { name: /sales-th\.csv/ })).toHaveAttribute("aria-current", "true");
+});

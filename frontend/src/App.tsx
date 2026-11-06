@@ -31,10 +31,11 @@ import { loadLastResult, saveLastResult, type LastResult } from "./lastResult";
 import BatchResults, { type BatchRow } from "./BatchResults";
 import SheetOverview from "./SheetOverview";
 import ColumnTable from "./ColumnTable";
+import FileSwitcher from "./FileSwitcher";
 import LookFirst from "./LookFirst";
 import SendCheck from "./SendCheck";
 const downloadProblemRowsXlsx = (data: Analysis) => import("./issueExport").then((module) => module.downloadProblemRowsXlsx(data));
-import { allowedFile, checkSentSize, MAX_TEXT_MB, MAX_UPLOAD_MB, prepareUpload } from "./upload";
+import { allowedFile, checkSentSize, MAX_TEXT_MB, MAX_UPLOAD_MB, prepareUpload, postWithProgress } from "./upload";
 import { downloadExecutiveReport, downloadQualityCsv, printExecutiveReport, summaryText } from "./report";
 const RulesPanel = lazy(() => import("./Rules").then((module) => ({ default: module.RulesPanel })));
 import ChartBoundary from "./ChartBoundary";
@@ -114,6 +115,8 @@ export default function App() {
     }
   }, [dark]);
   // Real phases of one analysis: reading the file, waiting for the service, applying its answer.
+  const [uploadPct, setUploadPct] = useState(0);
+  const [fileSet, setFileSet] = useState<BatchRow[]>([]);
   const [retry, setRetry] = useState<(() => void) | null>(null);
   const [stage, setStage] = useState<"idle" | "read" | "analyze" | "check" | "done">("idle");
   const [dragging, setDragging] = useState(false);
@@ -214,10 +217,8 @@ export default function App() {
                 : undefined)),
       }),
     );
-    const response = await fetch(`/api/analyze?header_mode=${headerMode}`, {
-      method: "POST",
-      body,
-    });
+    setUploadPct(0);
+    const response = await postWithProgress(`/api/analyze?header_mode=${headerMode}`, body, setUploadPct);
     if (!response.ok) {
       const e = await response.json().catch(() => ({
         detail:
@@ -449,7 +450,8 @@ export default function App() {
       setPage(0);
       if (fresh) setTab("Overview");
       setStage("done");
-      if (fromLanding) setHolding(true);
+      setFileSet((current) => (current.some((row) => row.file === file) ? current : []));
+      if (fromLanding && !batch) setHolding(true);
     } catch (e) {
       setStage("idle");
       setRetry(() => () => void upload(file, headerMode, schema, attested));
@@ -600,6 +602,7 @@ export default function App() {
   }
   function clearDataset() {
     setData(null);
+    setFileSet([]);
     setHolding(false);
     setStage("idle");
     setLastTime(null);
@@ -708,8 +711,8 @@ export default function App() {
           {!landing && <div className="page-heading">
             <div>
               <div className="eyebrow">{t("DATASET EXPLORER")}</div>
-              <h1>{t("Good insights start")}<br className="mobile-break" />{t("with good data.")}</h1>
-              <p>{t("Understand your schema, spot gaps, and explore what matters.")}</p>
+              <h1>{t("Analysis results")}</h1>
+              <p>{t("See what needs fixing before you send the file.")}</p>
             </div>
             {data && (
               <button
@@ -808,6 +811,7 @@ export default function App() {
                     rows={batch}
                     busy={busy}
                     onOpen={(file) => {
+                      setFileSet(batch.filter((row) => !row.error));
                       setBatch(null);
                       void upload(file);
                     }}
@@ -834,6 +838,11 @@ export default function App() {
                           <li key={key} className={`step ${state}`} aria-current={state === "active" ? "step" : undefined}>
                             <span className="step-mark" aria-hidden="true">{state === "done" ? <Check size={14} /> : index + 1}</span>
                             {t(label)}
+                            {key === "analyze" && state === "active" && (
+                              <span className="step-pct" aria-live="off">
+                                {uploadPct < 100 ? `${t("Sending")} ${uploadPct}%` : t("Waiting for the service")}
+                              </span>
+                            )}
                           </li>
                         );
                       })}
@@ -903,6 +912,7 @@ export default function App() {
             </div>
           ) : (
             <>
+              <FileSwitcher files={fileSet} current={lastFile} busy={busy} onPick={(file) => void upload(file)} />
               <div className="file-strip">
                 <div className="file-icon">
                   <FileSpreadsheet size={23} />

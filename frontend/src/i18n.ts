@@ -54,6 +54,11 @@ const th: Record<string, string> = {
   "This file type is not supported. Save it as CSV, JSON or Excel (.xlsx) and try again.": "ไม่รองรับไฟล์ชนิดนี้ บันทึกเป็น CSV, JSON หรือ Excel (.xlsx) แล้วลองอีกครั้ง",
   "Try again": "ลองใหม่",
   "Export quality report (CSV)": "ส่งออกรายงานคุณภาพ (CSV)",
+  "Analysis results": "ผลการวิเคราะห์",
+  "See what needs fixing before you send the file.": "ดูว่าต้องแก้อะไรก่อนส่งไฟล์",
+  Files: "ไฟล์",
+  Sending: "กำลังส่ง",
+  "Waiting for the service": "รอบริการวิเคราะห์",
   "Your next discovery starts here": "การค้นพบครั้งต่อไปเริ่มที่นี่",
   "Drop a CSV, Excel (.xlsx) or JSON file here to explore its quality and structure.": "วางไฟล์ CSV, Excel (.xlsx) หรือ JSON ที่นี่เพื่อดูคุณภาพและโครงสร้างของข้อมูล",
   "Current release: use synthetic or confirmed non-personal data only. CSV bytes are sent to the analysis service and may be handled transiently by the hosting framework. DataLens does not intentionally persist the file.":
