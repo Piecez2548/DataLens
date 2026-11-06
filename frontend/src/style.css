@@ -1412,3 +1412,8 @@ footer span:first-child {
 .batch-card .primary { min-width: 160px; }
 .multi-hint { display: block; margin-top: 6px; }
 @media (max-width: 600px) { .batch-card .primary { width: 100%; } }
+
+.batch-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.file-switcher-ready { font-size: 13px; color: var(--muted); }
+.file-switcher-nav { display: flex; gap: 8px; margin-left: auto; }
+@media (max-width: 600px) { .file-switcher-nav { margin-left: 0; width: 100%; } .file-switcher-nav button { flex: 1; } }

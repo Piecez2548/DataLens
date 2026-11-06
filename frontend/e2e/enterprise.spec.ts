@@ -742,3 +742,26 @@ test("files checked together stay switchable in the workspace", async ({ page })
   await expect(page.getByText("sales-th.csv").first()).toBeVisible();
   await expect(switcher.getByRole("button", { name: /sales-th\.csv/ })).toHaveAttribute("aria-current", "true");
 });
+
+test("walks through a set of files with next-file, overview and a combined CSV", async ({ page }) => {
+  await page.addInitScript(() => window.localStorage.setItem("e2e.keep-hold", "1"));
+  await page.goto("/");
+  await page.getByLabel(/I am allowed to analyze this file/).check();
+  await page.getByLabel("Upload CSV file").setInputFiles([
+    path.resolve("../samples/demo.csv"),
+    path.resolve("../frontend/public/samples/sales-th.csv"),
+  ]);
+  await expect(page.getByRole("heading", { name: "Checked 2 files" })).toBeVisible();
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: "Export summary of all files (CSV)" }).click(),
+  ]);
+  expect(download.suggestedFilename()).toBe("files-check-summary.csv");
+  await page.getByRole("button", { name: "See details" }).first().click();
+  const switcher = page.getByRole("navigation", { name: "Files checked together" });
+  await expect(switcher.getByText(/of 2 files ready to send/)).toBeVisible();
+  await switcher.getByRole("button", { name: /Next file/ }).click();
+  await expect(switcher.getByRole("button", { name: /Next file/ })).toHaveCount(0);
+  await switcher.getByRole("button", { name: "All files overview" }).click();
+  await expect(page.getByRole("heading", { name: "Checked 2 files" })).toBeVisible();
+});

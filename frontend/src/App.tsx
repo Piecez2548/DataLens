@@ -658,7 +658,7 @@ export default function App() {
       after: data.executive.issue_count.toLocaleString(),
     };
   })();
-  const landing = !data || holding;
+  const landing = !data || holding || batch !== null;
   return (
     <div className={`${dark ? "app dark" : "app"}${landing ? " landing-mode" : ""}`}>
       <aside>
@@ -782,7 +782,10 @@ export default function App() {
                 setBatch(null);
                 void upload(file);
               }}
-              onClose={() => setBatch(null)}
+              onClose={() => {
+                setBatch(null);
+                clearDataset();
+              }}
             />
           ) : landing ? (
             <div className="landing">
@@ -916,7 +919,7 @@ export default function App() {
             </div>
           ) : (
             <>
-              <FileSwitcher files={fileSet} current={lastFile} busy={busy} onPick={(file) => void upload(file)} />
+              <FileSwitcher files={fileSet} current={lastFile} busy={busy} onPick={(file) => void upload(file)} onOverview={() => setBatch(fileSet)} />
               <div className="file-strip">
                 <div className="file-icon">
                   <FileSpreadsheet size={23} />

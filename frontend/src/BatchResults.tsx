@@ -1,4 +1,5 @@
 import { t, tf, tStatus } from "./i18n";
+import { downloadBatchCsv } from "./report";
 
 export type BatchRow = { file: File; status?: string; rows?: number; issues?: number; top?: string; error?: string };
 
@@ -36,7 +37,10 @@ export default function BatchResults({
                 : t("All files look ready to send.")}
           </p>
         </div>
-        <button onClick={onClose}>{t("Check a new set")}</button>
+        <div className="batch-actions">
+          <button disabled={waiting > 0} onClick={() => downloadBatchCsv(rows)}>{t("Export summary of all files (CSV)")}</button>
+          <button onClick={onClose}>{t("Check a new set")}</button>
+        </div>
       </div>
       <ul className="batch-list" role="status" aria-live="polite">
         {ordered.map(({ row, index }) => (

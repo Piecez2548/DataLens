@@ -68,6 +68,11 @@ const th: Record<string, string> = {
   "{count} items to review": "{count} รายการที่ต้องตรวจ",
   "See details": "ดูรายละเอียด",
   "You can choose or drop up to 10 files at once.": "เลือกหรือวางได้สูงสุด 10 ไฟล์พร้อมกัน",
+  "Export summary of all files (CSV)": "ส่งออกสรุปทุกไฟล์ (CSV)",
+  "Could not be checked": "ตรวจไม่สำเร็จ",
+  "{ready} of {total} files ready to send": "พร้อมส่ง {ready} จาก {total} ไฟล์",
+  "All files overview": "ภาพรวมทุกไฟล์",
+  "Next file": "ไฟล์ถัดไป",
   "Your next discovery starts here": "การค้นพบครั้งต่อไปเริ่มที่นี่",
   "Drop a CSV, Excel (.xlsx) or JSON file here to explore its quality and structure.": "วางไฟล์ CSV, Excel (.xlsx) หรือ JSON ที่นี่เพื่อดูคุณภาพและโครงสร้างของข้อมูล",
   "Current release: use synthetic or confirmed non-personal data only. CSV bytes are sent to the analysis service and may be handled transiently by the hosting framework. DataLens does not intentionally persist the file.":

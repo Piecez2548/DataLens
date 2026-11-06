@@ -159,7 +159,7 @@ export function summaryText(data: Analysis): string {
   return lines.join("\n");
 }
 
-const csvCell = (value: string | number) => {
+export const csvCell = (value: string | number) => {
   let text = String(value);
   // A cell starting with = + - @ can run as a formula when the file is opened in Excel.
   if (/^[=+\-@\t\r]/.test(text) && typeof value === "string") text = `'${text}`;
@@ -184,6 +184,29 @@ export function downloadQualityCsv(data: Analysis) {
   const link = document.createElement("a");
   link.href = url;
   link.download = `${buildReport(data).safeName}-quality-report.csv`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+/** One line per file of a set checked together, to paste into a tracker or send with the files. */
+export function downloadBatchCsv(
+  rows: { file: File; status?: string; rows?: number; issues?: number; top?: string; error?: string }[],
+) {
+  const header = ["File", "Status", "Rows", "Items to review", "Main finding"].map((h) => t(h));
+  const lines = rows.map((r) => [
+    r.file.name,
+    r.error ? t("Could not be checked") : r.status ? tStatus(r.status) : "",
+    r.rows ?? "",
+    r.issues ?? "",
+    r.error ?? r.top ?? "",
+  ]);
+  const text = [header, ...lines].map((row) => row.map(csvCell).join(",")).join("\r\n");
+  const url = URL.createObjectURL(new Blob(["\ufeff" + text], { type: "text/csv;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "files-check-summary.csv";
   document.body.append(link);
   link.click();
   link.remove();
